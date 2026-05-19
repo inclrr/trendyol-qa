@@ -1,0 +1,185 @@
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { getVersion } from "@tauri-apps/api/app";
+import { api } from "../api/tauri";
+import { useUpdaterStore } from "../stores/useUpdaterStore";
+import { RefreshCw } from "../components/icons";
+
+export default function Settings() {
+  const { t } = useTranslation();
+  const [pollingEnabled, setPollingEnabled] = useState(true);
+  const [pollInterval, setPollInterval] = useState(120);
+  const [autostart, setAutostart] = useState(false);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [version, setVersion] = useState<string>("");
+  const {
+    checking,
+    available,
+    version: newVersion,
+    notes,
+    downloading,
+    progress,
+    error: updaterError,
+    lastChecked,
+    manualCheck,
+    downloadAndInstall,
+  } = useUpdaterStore();
+
+  useEffect(() => {
+    (async () => {
+      const s = await api.getAllSettings();
+      setPollingEnabled(s.polling_enabled === "true");
+      setPollInterval(Number(s.poll_interval_seconds ?? 120));
+      try {
+        setAutostart(await isEnabled());
+      } catch {
+        setAutostart(false);
+      }
+      try {
+        setVersion(await getVersion());
+      } catch {
+        setVersion("");
+      }
+    })();
+  }, []);
+
+  async function save() {
+    await api.setSetting("polling_enabled", String(pollingEnabled));
+    await api.setSetting("poll_interval_seconds", String(pollInterval));
+    try {
+      if (autostart) await enable();
+      else await disable();
+      await api.setSetting("autostart_enabled", String(autostart));
+    } catch (e) {
+      console.warn(e);
+    }
+    setSavedMsg(t("settings.saved"));
+    setTimeout(() => setSavedMsg(null), 2500);
+  }
+
+  function formatLastChecked() {
+    if (!lastChecked) return t("settings.neverChecked");
+    return new Date(lastChecked).toLocaleString("tr-TR");
+  }
+
+  return (
+    <div className="space-y-6 p-6">
+      <h2 className="text-xl font-semibold">{t("settings.title")}</h2>
+
+      <section className="card space-y-3">
+        <h3 className="text-sm font-semibold text-muted">
+          {t("settings.updates")}
+        </h3>
+        <div className="text-sm">
+          {t("settings.currentVersion")}:{" "}
+          <span className="font-mono">{version || "—"}</span>
+        </div>
+
+        {available ? (
+          <div className="rounded-lg bg-success/10 p-3 text-sm">
+            <div className="font-semibold text-success">
+              {t("settings.updateAvailable", { version: newVersion })}
+            </div>
+            {notes && (
+              <div className="mt-2">
+                <div className="text-xs text-muted">
+                  {t("settings.updateNotes")}:
+                </div>
+                <pre className="mt-1 whitespace-pre-wrap text-xs">{notes}</pre>
+              </div>
+            )}
+            <button
+              onClick={downloadAndInstall}
+              disabled={downloading}
+              className="btn-primary mt-3"
+            >
+              {downloading
+                ? t("settings.downloading", { progress })
+                : t("settings.downloadAndInstall")}
+            </button>
+          </div>
+        ) : (
+          <div className="text-sm text-muted">
+            {checking ? t("settings.checking") : t("settings.upToDate")}
+          </div>
+        )}
+
+        {updaterError && (
+          <div className="rounded-lg bg-danger/10 p-3 text-xs text-danger">
+            {updaterError}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={manualCheck}
+            disabled={checking || downloading}
+            className="btn-secondary"
+          >
+            <RefreshCw
+              className={`mr-1 h-4 w-4 ${checking ? "animate-spin" : ""}`}
+            />
+            {checking ? t("settings.checking") : t("settings.checkForUpdates")}
+          </button>
+          <span className="text-xs text-muted">
+            {t("settings.lastChecked")}: {formatLastChecked()}
+          </span>
+        </div>
+      </section>
+
+      <section className="card space-y-3">
+        <h3 className="text-sm font-semibold text-muted">
+          {t("settings.polling")}
+        </h3>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={pollingEnabled}
+            onChange={(e) => setPollingEnabled(e.target.checked)}
+          />
+          {t("settings.pollingEnabled")}
+        </label>
+        <div>
+          <label className="label">{t("settings.pollInterval")}</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={30}
+              max={3600}
+              className="input max-w-[120px]"
+              value={pollInterval}
+              onChange={(e) => setPollInterval(Number(e.target.value))}
+            />
+            <span className="text-sm text-muted">{t("settings.seconds")}</span>
+            <span className="text-xs text-muted">
+              ({Math.round(pollInterval / 60)} {t("settings.minutes")})
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section className="card space-y-3">
+        <h3 className="text-sm font-semibold text-muted">
+          {t("settings.startup")}
+        </h3>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={autostart}
+            onChange={(e) => setAutostart(e.target.checked)}
+          />
+          {t("settings.autostart")}
+        </label>
+        <p className="text-xs text-muted">{t("settings.autostartHint")}</p>
+      </section>
+
+      <div className="flex items-center gap-3">
+        <button onClick={save} className="btn-primary">
+          {t("app.save")}
+        </button>
+        {savedMsg && <span className="text-sm text-success">{savedMsg}</span>}
+      </div>
+    </div>
+  );
+}

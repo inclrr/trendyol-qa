@@ -1,0 +1,22 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+
+# Rust / Tauri
+src-tauri/target
+src-tauri/Cargo.lock
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Build artefacts
+*.log
+
+# Tauri updater signing keys (NEVER commit!)
+*.key
+*.key.pub

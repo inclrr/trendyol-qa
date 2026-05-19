@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Trendyol Soru-Cevap",
+  "version": "0.2.0",
+  "identifier": "com.trendyolqa.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Trendyol Soru-Cevap Yönetimi",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": true,
+        "decorations": true,
+        "transparent": false,
+        "label": "main"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Trendyol soru-cevap yönetim uygulaması",
+    "longDescription": "Birden fazla Trendyol mağazası için müşteri sorularını tek yerden yönetin; manuel, hazır cevap veya yapay zeka ile cevaplayın."
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/inclrr/trendyol-qa/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzNTYyRkREN0U5QzRCNDcKUldSSFM1eCszUzlXRS9ESW5PMld0R0VXdHdpSE4rb2habU5HL1NvMEZ1dnJtd0F1c1BiQVlqY0kK"
+    }
+  }
+}

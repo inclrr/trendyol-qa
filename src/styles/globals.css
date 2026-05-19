@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 248 250 252;
+  --bg-elev: 255 255 255;
+  --bg-elev-2: 241 245 249;
+  --fg: 15 23 42;
+  --muted: 100 116 139;
+  --border: 226 232 240;
+  --brand: 244 92 30;
+  --brand-fg: 255 255 255;
+  --danger: 239 68 68;
+  --success: 16 185 129;
+  --warning: 245 158 11;
+  --info: 59 130 246;
+}
+
+.dark {
+  --bg: 15 23 42;
+  --bg-elev: 30 41 59;
+  --bg-elev-2: 51 65 85;
+  --fg: 241 245 249;
+  --muted: 148 163 184;
+  --border: 51 65 85;
+  --brand: 244 124 75;
+  --brand-fg: 23 23 23;
+  --danger: 248 113 113;
+  --success: 52 211 153;
+  --warning: 251 191 36;
+  --info: 96 165 250;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  background-color: rgb(var(--bg));
+  color: rgb(var(--fg));
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-brand/40 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand text-brand-fg hover:opacity-90;
+  }
+  .btn-secondary {
+    @apply btn bg-bg-elev-2 text-fg hover:bg-bg-elev border border-border;
+  }
+  .btn-ghost {
+    @apply btn text-fg hover:bg-bg-elev-2;
+  }
+  .btn-danger {
+    @apply btn bg-danger text-white hover:opacity-90;
+  }
+  .input {
+    @apply w-full rounded-lg border border-border bg-bg-elev px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/40;
+  }
+  .card {
+    @apply rounded-xl border border-border bg-bg-elev p-4 shadow-sm;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-fg;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
