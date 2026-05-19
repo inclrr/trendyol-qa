@@ -1,6 +1,6 @@
 [package]
 name = "trendyol-qa"
-version = "0.4.1"
+version = "0.5.0"
 description = "Trendyol Soru-Cevap Yönetim Uygulaması"
 authors = ["you"]
 edition = "2021"
@@ -42,6 +42,10 @@ parking_lot = "0.12"
 async-trait = "0.1"
 nonzero_ext = "0.3"
 uuid = { version = "1.11", features = ["v4"] }
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+whoami = "1.5"
+rand = "0.8"
 
 
 

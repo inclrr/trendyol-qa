@@ -53,6 +53,8 @@ export interface StoredQuestion {
   rejectedDate: number | null;
   fetchedAt: number;
   notified: boolean;
+  draftAiAnswer: string | null;
+  draftAiGeneratedAt: number | null;
 }
 
 export interface SyncSummary {
@@ -140,6 +142,8 @@ export const api = {
     startDate?: number | null;
     endDate?: number | null;
   }) => invoke<SyncSummary>("sync_now", { params: params ?? null }),
+  syncQuestion: (questionId: number) =>
+    invoke<StoredQuestion | null>("sync_question", { questionId }),
   listQuestions: (params: {
     storeIds?: number[] | null;
     status?: string | null;
@@ -199,6 +203,8 @@ export const api = {
     invoke<void>("delete_ai_provider", { provider }),
   listModels: (provider: string) =>
     invoke<AiModel[]>("list_models", { provider }),
+  checkOllamaHealth: (baseUrl?: string | null) =>
+    invoke<boolean>("check_ollama_health", { baseUrl: baseUrl ?? null }),
   generateAnswer: (questionId: number, modelOverride?: string) =>
     invoke<string>("generate_answer", {
       payload: { questionId, modelOverride: modelOverride ?? null },

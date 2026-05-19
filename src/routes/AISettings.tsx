@@ -13,7 +13,7 @@ import { Check, RefreshCw, Sparkles, Trash } from "../components/icons";
 import { formatDate } from "../lib/format";
 
 interface ProviderForm {
-  provider: "gemini" | "openrouter";
+  provider: "gemini" | "openrouter" | "ollama";
   displayName: string;
   apiKey: string;
   baseUrl: string;
@@ -33,6 +33,13 @@ const DEFAULTS: ProviderForm[] = [
     displayName: "OpenRouter",
     apiKey: "",
     baseUrl: "https://openrouter.ai/api/v1",
+    selectedModel: "",
+  },
+  {
+    provider: "ollama",
+    displayName: "Ollama (Yerel)",
+    apiKey: "",
+    baseUrl: "http://localhost:11434",
     selectedModel: "",
   },
 ];
@@ -234,32 +241,41 @@ export default function AISettings() {
                     )}
                   </div>
                 </div>
-                <div>
-                  <label className="label">{t("ai.apiKey")}</label>
-                  {row?.hasApiKey && maskedKeys[form.provider] && (
-                    <div className="mb-1 rounded-md bg-bg-elev-2 px-2 py-1 font-mono text-xs text-muted">
-                      {t("ai.savedKeyLabel")}: {maskedKeys[form.provider]}
-                    </div>
-                  )}
-                  <input
-                    type="password"
-                    className="input"
-                    placeholder={row?.hasApiKey ? t("ai.keyHintReplace") : ""}
-                    value={form.apiKey}
-                    onChange={(e) =>
-                      setForms((prev) =>
-                        prev.map((f) =>
-                          f.provider === form.provider
-                            ? { ...f, apiKey: e.target.value }
-                            : f
-                        )
-                      )
-                    }
-                  />
-                </div>
-                {form.provider === "openrouter" && (
+                {form.provider !== "ollama" ? (
                   <div>
-                    <label className="label">Base URL</label>
+                    <label className="label">{t("ai.apiKey")}</label>
+                    {row?.hasApiKey && maskedKeys[form.provider] && (
+                      <div className="mb-1 rounded-md bg-bg-elev-2 px-2 py-1 font-mono text-xs text-muted">
+                        {t("ai.savedKeyLabel")}: {maskedKeys[form.provider]}
+                      </div>
+                    )}
+                    <input
+                      type="password"
+                      className="input"
+                      placeholder={row?.hasApiKey ? t("ai.keyHintReplace") : ""}
+                      value={form.apiKey}
+                      onChange={(e) =>
+                        setForms((prev) =>
+                          prev.map((f) =>
+                            f.provider === form.provider
+                              ? { ...f, apiKey: e.target.value }
+                              : f
+                          )
+                        )
+                      }
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-info/10 p-2 text-xs text-info">
+                    {t("ai.noApiKeyNeeded")}
+                    <div className="mt-1 text-muted">
+                      {t("ai.ollamaSetupSteps")}
+                    </div>
+                  </div>
+                )}
+                {(form.provider === "openrouter" || form.provider === "ollama") && (
+                  <div>
+                    <label className="label">{t("ai.baseUrl")}</label>
                     <input
                       className="input"
                       value={form.baseUrl}
@@ -303,7 +319,9 @@ export default function AISettings() {
                     onClick={() => loadModels(form)}
                     disabled={
                       loadingModels === form.provider ||
-                      (!form.apiKey && !row?.hasApiKey)
+                      (form.provider !== "ollama" &&
+                        !form.apiKey &&
+                        !row?.hasApiKey)
                     }
                     className="btn-secondary"
                   >

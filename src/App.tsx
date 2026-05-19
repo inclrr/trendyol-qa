@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Route, Routes, Navigate, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import Layout from "./components/Layout";
+import AIApprovalModal from "./components/AIApprovalModal";
 import { useInboxStore } from "./stores/useInboxStore";
 import Inbox from "./routes/Inbox";
 import QuestionDetail from "./routes/QuestionDetail";
@@ -19,6 +20,7 @@ export default function App() {
   const silentCheckUpdate = useUpdaterStore((s) => s.silentCheck);
   const nav = useNavigate();
   const setInboxStatus = useInboxStore((s) => s.setStatus);
+  const [approvalQuestionId, setApprovalQuestionId] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -59,14 +61,28 @@ export default function App() {
         console.warn(e);
       }
     });
-    const un3 = listen<number[]>("notification:focus", (ev) => {
-      // Pencere ön plana geldi ve bekleyen bildirimler var → inbox'ta WAITING_FOR_ANSWER'a git
+    const un3 = listen<number[]>("notification:focus", async (ev) => {
+      // Pencere ön plana geldi: en son notify edilen soru için
+      // draft_ai_answer doluysa AIApprovalModal aç; yoksa inbox'a git
       const ids = ev.payload;
-      if (ids && ids.length > 0) {
-        setInboxStatus("WAITING_FOR_ANSWER");
-        const target = ids[ids.length - 1];
-        nav(`/inbox/${target}`);
+      if (!ids || ids.length === 0) return;
+      setInboxStatus("WAITING_FOR_ANSWER");
+      const target = ids[ids.length - 1];
+      try {
+        const q = await api.getQuestion(target);
+        if (q?.draftAiAnswer) {
+          setApprovalQuestionId(target);
+        } else {
+          // Modal yoksa inbox listesinde göster
+          nav("/inbox");
+        }
+      } catch {
+        nav("/inbox");
       }
+    });
+    const un4 = listen<number>("ai-draft:ready", () => {
+      // Background AI cevap hazır oldu; pending count refresh
+      refreshPending();
     });
     // Pencere focus alınca update kontrolü (son kontrolden 5dk+ geçtiyse)
     let lastFocusCheck = 0;
@@ -82,9 +98,11 @@ export default function App() {
       un1.then((f) => f());
       un2.then((f) => f());
       un3.then((f) => f());
+      un4.then((f) => f());
       window.removeEventListener("focus", onFocus);
     };
-  }, [nav, setInboxStatus, silentCheckUpdate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function refreshPending() {
     try {
@@ -96,17 +114,28 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to="/inbox" replace />} />
-        <Route path="/inbox" element={<Inbox />} />
-        <Route path="/inbox/:id" element={<QuestionDetail />} />
-        <Route path="/bulk" element={<BulkAnswer />} />
-        <Route path="/templates" element={<Templates />} />
-        <Route path="/stores" element={<Stores />} />
-        <Route path="/ai" element={<AISettings />} />
-        <Route path="/settings" element={<Settings />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Navigate to="/inbox" replace />} />
+          <Route path="/inbox" element={<Inbox />} />
+          <Route path="/inbox/:id" element={<QuestionDetail />} />
+          <Route path="/bulk" element={<BulkAnswer />} />
+          <Route path="/templates" element={<Templates />} />
+          <Route path="/stores" element={<Stores />} />
+          <Route path="/ai" element={<AISettings />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+      </Routes>
+      {approvalQuestionId !== null && (
+        <AIApprovalModal
+          questionId={approvalQuestionId}
+          onClose={() => setApprovalQuestionId(null)}
+          onSent={() => {
+            refreshPending();
+          }}
+        />
+      )}
+    </>
   );
 }

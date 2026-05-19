@@ -5,6 +5,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { api } from "../api/tauri";
+import { openExternal } from "../lib/open";
 import { useUpdaterStore } from "../stores/useUpdaterStore";
 import { RefreshCw } from "../components/icons";
 
@@ -13,6 +14,9 @@ export default function Settings() {
   const [pollingEnabled, setPollingEnabled] = useState(true);
   const [pollInterval, setPollInterval] = useState(120);
   const [autostart, setAutostart] = useState(false);
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const [autoAiReply, setAutoAiReply] = useState(true);
+  const [notificationSound, setNotificationSound] = useState(true);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [version, setVersion] = useState<string>("");
   const [backupBusy, setBackupBusy] = useState(false);
@@ -37,6 +41,9 @@ export default function Settings() {
       const s = await api.getAllSettings();
       setPollingEnabled(s.polling_enabled === "true");
       setPollInterval(Number(s.poll_interval_seconds ?? 120));
+      setAutoAdvance(s.auto_advance_after_answer !== "false");
+      setAutoAiReply(s.auto_ai_reply !== "false");
+      setNotificationSound(s.notification_sound_enabled !== "false");
       try {
         setAutostart(await isEnabled());
       } catch {
@@ -53,6 +60,9 @@ export default function Settings() {
   async function save() {
     await api.setSetting("polling_enabled", String(pollingEnabled));
     await api.setSetting("poll_interval_seconds", String(pollInterval));
+    await api.setSetting("auto_advance_after_answer", String(autoAdvance));
+    await api.setSetting("auto_ai_reply", String(autoAiReply));
+    await api.setSetting("notification_sound_enabled", String(notificationSound));
     try {
       if (autostart) await enable();
       else await disable();
@@ -145,10 +155,40 @@ export default function Settings() {
             </div>
             {notes && (
               <div className="mt-2">
-                <div className="text-xs text-muted">
-                  {t("settings.updateNotes")}:
+                <div className="mb-1 text-xs font-semibold text-fg">
+                  ✨ {t("settings.whatsNew")}
                 </div>
-                <pre className="mt-1 whitespace-pre-wrap text-xs">{notes}</pre>
+                <div className="max-h-72 overflow-auto rounded-md bg-bg-elev-2 p-2 text-xs leading-relaxed">
+                  {notes.split("\n").map((line, i) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return <br key={i} />;
+                    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+                      return (
+                        <div key={i} className="ml-2">
+                          • {trimmed.slice(2)}
+                        </div>
+                      );
+                    }
+                    if (trimmed.startsWith("#")) {
+                      return (
+                        <div key={i} className="mt-2 font-semibold text-fg">
+                          {trimmed.replace(/^#+\s*/, "")}
+                        </div>
+                      );
+                    }
+                    return <div key={i}>{trimmed}</div>;
+                  })}
+                </div>
+                <button
+                  onClick={() =>
+                    openExternal(
+                      "https://github.com/inclrr/trendyol-qa/blob/main/CHANGELOG.md"
+                    )
+                  }
+                  className="mt-2 text-xs text-info hover:underline"
+                >
+                  {t("settings.viewFullChangelog")} →
+                </button>
               </div>
             )}
             <button
@@ -257,6 +297,45 @@ export default function Settings() {
             {backupErr}
           </div>
         )}
+      </section>
+
+      <section className="card space-y-3">
+        <h3 className="text-sm font-semibold text-muted">
+          {t("settings.answeringBehavior")}
+        </h3>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={autoAdvance}
+            onChange={(e) => setAutoAdvance(e.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            {t("settings.autoAdvance")}
+            <div className="text-xs text-muted">{t("settings.autoAdvanceHint")}</div>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={autoAiReply}
+            onChange={(e) => setAutoAiReply(e.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            {t("settings.autoAiReply")}
+            <div className="text-xs text-muted">{t("settings.autoAiReplyHint")}</div>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={notificationSound}
+            onChange={(e) => setNotificationSound(e.target.checked)}
+            className="mt-1"
+          />
+          <span>{t("settings.notificationSound")}</span>
+        </label>
       </section>
 
       <section className="card space-y-3">

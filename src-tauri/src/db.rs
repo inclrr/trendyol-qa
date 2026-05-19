@@ -136,6 +136,14 @@ const MIGRATIONS: &[(i64, &str)] = &[
         ALTER TABLE ai_training_runs ADD COLUMN original_prompt TEXT;
         "#,
     ),
+    (
+        3,
+        // v3: questions tablosuna draft AI cevap sütunları
+        r#"
+        ALTER TABLE questions ADD COLUMN draft_ai_answer TEXT;
+        ALTER TABLE questions ADD COLUMN draft_ai_generated_at INTEGER;
+        "#,
+    ),
 ];
 
 fn run_migrations(conn: &mut DbConn) -> AppResult<()> {
@@ -197,6 +205,9 @@ fn seed_defaults(conn: &DbConn) -> AppResult<()> {
         ("notification_sound", "true"),
         ("default_answer_mode", "manual"),
         ("polling_enabled", "true"),
+        ("auto_advance_after_answer", "true"),
+        ("auto_ai_reply", "true"),
+        ("notification_sound_enabled", "true"),
     ];
     for (k, v) in defaults {
         conn.execute(

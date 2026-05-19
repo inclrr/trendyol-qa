@@ -1,3 +1,4 @@
+use crate::commands::settings::get_setting_sync;
 use crate::state::AppState;
 use crate::trendyol::models::TrendyolQuestion;
 use std::sync::Arc;
@@ -16,6 +17,9 @@ pub fn notify_new_questions(
     for item in items {
         state.push_notification(item.id);
     }
+    let sound_enabled = get_setting_sync(state, "notification_sound_enabled")
+        .map(|v| v != "false")
+        .unwrap_or(true);
     let title = if items.len() == 1 {
         format!("Yeni soru — {}", store_name)
     } else {
@@ -37,12 +41,11 @@ pub fn notify_new_questions(
             .join("\n")
     };
 
-    let _ = app
-        .notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show();
+    let mut builder = app.notification().builder().title(title).body(body);
+    if sound_enabled {
+        builder = builder.sound("default");
+    }
+    let _ = builder.show();
 }
 
 fn truncate(s: &str, n: usize) -> String {

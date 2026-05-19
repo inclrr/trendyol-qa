@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type AnswerTemplate } from "../api/tauri";
-import { Send, Sparkles } from "./icons";
+import { Search, Send, Sparkles } from "./icons";
 
 interface Props {
   questionId: number;
@@ -10,9 +10,11 @@ interface Props {
   productName?: string | null;
   customerName?: string | null;
   storeName?: string | null;
+  /** Sol şablon paneli görünsün mü (modal'da true, dar yerlerde false) */
+  showTemplatePanel?: boolean;
+  /** Mount'ta textarea'yı bu metinle başlat (AI önerisini önceden doldurmak için) */
+  initialText?: string;
 }
-
-type Mode = "manual" | "template" | "ai";
 
 const DRAFT_KEY_PREFIX = "draft-question-";
 
@@ -34,39 +36,43 @@ export default function AnswerComposer({
   productName,
   customerName,
   storeName,
+  showTemplatePanel = false,
+  initialText,
 }: Props) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<Mode>("manual");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bannedWord, setBannedWord] = useState<string | null>(null);
   const [templates, setTemplates] = useState<AnswerTemplate[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | "">("");
+  const [search, setSearch] = useState("");
+  const [panelOpen, setPanelOpen] = useState(showTemplatePanel);
   const draftTimer = useRef<number | null>(null);
   const canAnswer = questionStatus === "WAITING_FOR_ANSWER";
   const draftKey = `${DRAFT_KEY_PREFIX}${questionId}`;
 
   useEffect(() => {
     api.listTemplates().then(setTemplates).catch(() => {});
-    // Draft kurtarma
     try {
       const draft = localStorage.getItem(draftKey);
       if (draft) setText(draft);
-    } catch {}
-  }, [questionId]);
+      else if (initialText) setText(initialText);
+      else setText("");
+    } catch {
+      setText(initialText ?? "");
+    }
+    setBannedWord(null);
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionId, initialText]);
 
-  // Draft autosave (debounced 500ms)
   useEffect(() => {
     if (draftTimer.current) window.clearTimeout(draftTimer.current);
     draftTimer.current = window.setTimeout(() => {
       try {
-        if (text.trim()) {
-          localStorage.setItem(draftKey, text);
-        } else {
-          localStorage.removeItem(draftKey);
-        }
+        if (text.trim()) localStorage.setItem(draftKey, text);
+        else localStorage.removeItem(draftKey);
       } catch {}
     }, 500);
     return () => {
@@ -74,10 +80,18 @@ export default function AnswerComposer({
     };
   }, [text, draftKey]);
 
-  function pickTemplate(id: number) {
-    setSelectedTemplateId(id);
-    const tpl = templates.find((t) => t.id === id);
-    if (!tpl) return;
+  const filteredTemplates = useMemo(() => {
+    if (!search.trim()) return templates;
+    const needle = search.toLowerCase();
+    return templates.filter(
+      (tpl) =>
+        tpl.title.toLowerCase().includes(needle) ||
+        tpl.body.toLowerCase().includes(needle) ||
+        (tpl.category ?? "").toLowerCase().includes(needle)
+    );
+  }, [templates, search]);
+
+  function pickTemplate(tpl: AnswerTemplate) {
     const filled = applyTemplateVariables(tpl.body, {
       musteri: customerName || t("app.defaultCustomerTitle"),
       urun: productName || t("app.defaultProductTitle"),
@@ -147,63 +161,11 @@ export default function AnswerComposer({
     );
   }
 
-  const modes: { value: Mode; label: string }[] = [
-    { value: "manual", label: t("question.manual") },
-    { value: "template", label: t("question.template") },
-    { value: "ai", label: t("question.ai") },
-  ];
-
-  return (
-    <div className="card space-y-3">
-      <div className="flex items-center gap-1 border-b border-border pb-3">
-        {modes.map((m) => (
-          <button
-            key={m.value}
-            onClick={() => setMode(m.value)}
-            className={`btn ${
-              mode === m.value ? "bg-brand text-brand-fg" : "btn-ghost"
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
-      {mode === "template" && (
-        <div>
-          <label className="label">{t("question.useTemplate")}</label>
-          <select
-            className="input"
-            value={selectedTemplateId}
-            onChange={(e) => pickTemplate(Number(e.target.value))}
-          >
-            <option value="">—</option>
-            {templates.map((tpl) => (
-              <option key={tpl.id} value={tpl.id ?? 0}>
-                {tpl.title}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-[10px] text-muted">{t("question.templateVarsHint")}</p>
-        </div>
-      )}
-
-      {mode === "ai" && (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={generate}
-            disabled={generating}
-            className="btn-secondary"
-          >
-            <Sparkles className="mr-1 h-4 w-4" />
-            {generating ? t("question.generating") : t("question.generate")}
-          </button>
-        </div>
-      )}
-
+  const composer = (
+    <div className="flex flex-col gap-2 flex-1 min-w-0">
       <textarea
-        rows={6}
-        className="input resize-y"
+        rows={8}
+        className="input resize-y min-h-[180px]"
         placeholder={t("question.placeholder")}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -211,19 +173,40 @@ export default function AnswerComposer({
         disabled={generating || busy}
         title={t("question.shortcutHint")}
       />
-      <div className="flex items-center justify-between text-xs">
-        <span className={charCount > 2000 ? "text-danger" : "text-muted"}>
-          {t("question.characterCount", { count: charCount })}
-        </span>
-        <button
-          onClick={() => send(false)}
-          disabled={!valid || busy}
-          className="btn-primary"
-          title={t("question.shortcutHint")}
-        >
-          <Send className="mr-1 h-4 w-4" />
-          {busy ? t("question.sending") : t("question.send")}
-        </button>
+      <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={generate}
+            disabled={generating || busy}
+            className="btn-secondary text-xs"
+            title="Yapay zekayla cevap üret"
+          >
+            <Sparkles className={`mr-1 h-4 w-4 ${generating ? "animate-pulse" : ""}`} />
+            {generating ? t("question.generating") : t("question.generate")}
+          </button>
+          {showTemplatePanel || (
+            <button
+              onClick={() => setPanelOpen(!panelOpen)}
+              className="btn-ghost text-xs"
+            >
+              📋 {t("question.toggleTemplates")}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={charCount > 2000 ? "text-danger" : "text-muted"}>
+            {t("question.characterCount", { count: charCount })}
+          </span>
+          <button
+            onClick={() => send(false)}
+            disabled={!valid || busy}
+            className="btn-primary"
+            title={t("question.shortcutHint")}
+          >
+            <Send className="mr-1 h-4 w-4" />
+            {busy ? t("question.sending") : t("question.send")}
+          </button>
+        </div>
       </div>
 
       {bannedWord && (
@@ -239,10 +222,56 @@ export default function AnswerComposer({
       )}
 
       {error && !bannedWord && (
-        <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger">
-          {error}
-        </div>
+        <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</div>
       )}
+    </div>
+  );
+
+  const panel = (
+    <aside className="w-full md:w-64 shrink-0 flex flex-col gap-2 border-border md:border-r md:pr-3">
+      <div className="text-xs font-semibold text-muted">{t("question.templatesPanel")}</div>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+        <input
+          className="input pl-7 text-xs"
+          placeholder={t("question.templatesSearchPlaceholder")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+      <div className="max-h-[360px] md:max-h-[420px] overflow-y-auto space-y-1 pr-1">
+        {templates.length === 0 ? (
+          <div className="rounded-md bg-bg-elev-2 p-2 text-xs text-muted">
+            {t("question.templatesEmpty")}
+          </div>
+        ) : filteredTemplates.length === 0 ? (
+          <div className="rounded-md bg-bg-elev-2 p-2 text-xs text-muted">
+            {t("question.noTemplateMatch")}
+          </div>
+        ) : (
+          filteredTemplates.map((tpl) => (
+            <button
+              key={tpl.id}
+              onClick={() => pickTemplate(tpl)}
+              className="w-full rounded-md border border-border bg-bg-elev px-2 py-1.5 text-left text-xs hover:border-brand/40 hover:bg-bg-elev-2 transition"
+            >
+              <div className="font-medium truncate">{tpl.title}</div>
+              <div className="mt-0.5 line-clamp-2 text-[10px] text-muted">{tpl.body}</div>
+            </button>
+          ))
+        )}
+      </div>
+    </aside>
+  );
+
+  if (!showTemplatePanel && !panelOpen) {
+    return <div className="card">{composer}</div>;
+  }
+
+  return (
+    <div className="card flex flex-col md:flex-row gap-3">
+      {(showTemplatePanel || panelOpen) && panel}
+      {composer}
     </div>
   );
 }

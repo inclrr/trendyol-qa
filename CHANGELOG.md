@@ -4,6 +4,31 @@ Tüm önemli değişiklikler burada listelenir. Versiyon formatı [SemVer](https
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-19
+
+### Önemli Değişiklikler
+- **🔐 Cross-platform şifreli secret store**: macOS Keychain prompt sorunu çözüldü. Artık tüm platformlarda ChaCha20-Poly1305 + Argon2id ile şifrelenmiş dosya kullanılıyor. v0.4.x'teki keyring kayıtları ilk açılışta otomatik taşınır.
+- **🤖 Ollama yerel AI desteği**: API key gerekmez, localhost:11434 üzerinden çalışır. Eğitim ve cevap üretimi aynı şekilde çalışır.
+- **✨ Otomatik AI cevap önerisi**: Yeni soru geldiğinde arka planda AI cevap üretilir; bildirim üzerinden uygulamayı açınca AIApprovalModal ile onaylanır/düzenlenir/manuel yazılır.
+- **📋 Şablon sol yan panel**: AnswerComposer iki sütunlu; sol tarafta arama + şablon kartları (kayar liste), sağ tarafta cevap yazma.
+- **⌨️ Sorular arası navigation**: Modal'da `↑↓/j/k` ile önceki/sonraki soru; cevap gönderdikten sonra otomatik sıradakine geçiş (Ayarlar'da kapatılabilir).
+- **🔔 Bildirim sesi**: Yeni soru geldiğinde sistem bildirim sesi çalar (Ayarlar'dan kapatılabilir).
+- **🛡️ CSP politikası geri eklendi**: Trendyol CDN'leri, AI provider'lar ve Ollama localhost dahil whitelist ile sertleştirilmiş.
+- **📦 Vite 7.x**: npm audit 0 vulnerability.
+
+### Düzeltildi
+- Cevaplanan sorular artık "Bekleyen" filtresinden anında kaybolur — `sync_question` komutu eklendi, status filtresi kesin uygulanır.
+- Güncelleme notları artık başlıklı/listeli + scrollable görünür + CHANGELOG linki.
+- AI cevap üretme hızı: max_tokens 2048 → 1024 (Türkçe ortalama cevap için yeterli).
+
+### Eklendi
+- Ayarlar → "Cevap Davranışı": `auto_advance_after_answer`, `auto_ai_reply`, `notification_sound_enabled` toggle'ları.
+- Schema migration v3: `draft_ai_answer` + `draft_ai_generated_at` sütunları.
+
+### Breaking
+- API key'ler artık keyring'de değil, app data dizinindeki şifreli `secrets.bin` dosyasında. Migration otomatik; ama yedek alındıysa farklı makinede açılmaz (machine-derived key).
+
+
 ## [0.4.1] - 2026-05-19
 
 ### Düzeltildi

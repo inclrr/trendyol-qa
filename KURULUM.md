@@ -33,6 +33,29 @@ Kullanıcı kurulum dosyasına çift tıklayınca:
 3. **Başlat menüsü kısayolu** + **Masaüstü kısayolu** (NSIS bunları otomatik ekler)
 4. **Kaldırma desteği** — Windows Ayarlar → Uygulamalar listesinde görünür
 
+## Yapay Zeka — Yerel (Ollama) Kurulum (Opsiyonel)
+
+API key kullanmadan, tamamen yerel makinede çalışan AI:
+
+1. https://ollama.com adresinden Ollama'yı kur (Windows/macOS/Linux)
+2. Terminal/PowerShell'de model indir:
+   ```bash
+   ollama pull llama3.1:8b
+   ```
+   (4.7 GB, Türkçe destekli, dengeli model)
+3. Uygulamada **Yapay Zeka** ekranı → **Ollama (Yerel)** → **"Modelleri Yükle"** → llama3.1:8b seç → **Aktif Yap**
+4. Test: bir soruya AI cevap üret
+
+Avantajlar:
+- API key gerekmez
+- Tüm veriler bilgisayarında kalır (gizlilik)
+- Sınırsız token (kota yok)
+- Çevrimdışı çalışır
+
+Dezavantajlar:
+- GPU yoksa cevap üretme yavaş olabilir
+- Modeller diskte ~5GB yer kaplar
+
 ## macOS Kurulum (Apple Silicon)
 
 1. `.dmg` dosyasını indir

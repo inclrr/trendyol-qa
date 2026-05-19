@@ -58,6 +58,37 @@ async fn run_cycle(app: &AppHandle, state: &Arc<AppState>) -> Result<(), String>
                             let _ = conn.execute(&sql, rusqlite::params_from_iter(refs));
                         }
                     }
+
+                    // Arka planda AI cevap önerisi üret (auto_ai_reply aktif ise)
+                    let auto_ai = get_setting_sync(state, "auto_ai_reply")
+                        .map(|v| v != "false")
+                        .unwrap_or(true);
+                    if auto_ai {
+                        for question_id in ids {
+                            let state_clone = state.clone();
+                            let app_clone = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                match crate::commands::ai::generate_draft_for_question(
+                                    state_clone,
+                                    question_id,
+                                )
+                                .await
+                                {
+                                    Ok(()) => {
+                                        let _ = app_clone.emit(
+                                            "ai-draft:ready",
+                                            question_id,
+                                        );
+                                    }
+                                    Err(e) => log::warn!(
+                                        "BG AI draft hatası (Q{}): {}",
+                                        question_id,
+                                        e
+                                    ),
+                                }
+                            });
+                        }
+                    }
                 }
             }
             Err(e) => {

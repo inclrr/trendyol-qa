@@ -33,6 +33,8 @@ pub struct StoredQuestion {
     pub rejected_date: Option<i64>,
     pub fetched_at: i64,
     pub notified: bool,
+    pub draft_ai_answer: Option<String>,
+    pub draft_ai_generated_at: Option<i64>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -89,13 +91,15 @@ fn row_to_stored(row: &rusqlite::Row) -> rusqlite::Result<StoredQuestion> {
         rejected_date: row.get(18)?,
         fetched_at: row.get(19)?,
         notified: notified_raw != 0,
+        draft_ai_answer: row.get(21).ok().flatten(),
+        draft_ai_generated_at: row.get(22).ok().flatten(),
     })
 }
 
 const SELECT_COLS: &str = "q.question_id, q.store_id, s.name, q.customer_id, q.customer_name, \
     q.text, q.status, q.creation_date, q.product_main_id, q.product_name, q.product_web_url, \
     q.product_image_url, q.barcode, q.public, q.answer_id, q.answer_text, q.answer_creation_date, \
-    q.reported_date, q.rejected_date, q.fetched_at, q.notified";
+    q.reported_date, q.rejected_date, q.fetched_at, q.notified, q.draft_ai_answer, q.draft_ai_generated_at";
 
 #[tauri::command]
 pub async fn list_questions(
@@ -202,6 +206,41 @@ pub async fn get_customer_history(
         .filter_map(|r| r.ok())
         .collect();
     Ok(res)
+}
+
+/// Tek bir sorunun Trendyol API'sinden son durumunu çekip lokali günceller.
+/// Cevap gönderildikten sonra kullanılır; API gecikmesi varsa local kayıt yine ANSWERED kalır.
+#[tauri::command]
+pub async fn sync_question(
+    state: State<'_, Arc<AppState>>,
+    question_id: i64,
+) -> AppResult<Option<StoredQuestion>> {
+    let state_arc = state.inner().clone();
+    let conn = state_arc.db.get()?;
+    let q_info: Option<(i64, i64, i64)> = conn
+        .query_row(
+            "SELECT store_id, creation_date, question_id FROM questions WHERE question_id = ?1",
+            params![question_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .ok();
+    drop(conn);
+    if q_info.is_none() {
+        return Ok(None);
+    }
+    let (store_id, creation_date, _) = q_info.unwrap();
+    // Sadece bu soruyu kapsayan dar bir tarih aralığı + tüm statüler
+    let two_hours = 2 * 60 * 60 * 1000i64;
+    let _ = sync_store(
+        state_arc.clone(),
+        store_id,
+        None, // tüm statüler
+        Some(creation_date - two_hours),
+        Some(creation_date + two_hours),
+    )
+    .await;
+    let q = get_question(state, question_id).await?;
+    Ok(q)
 }
 
 #[tauri::command]

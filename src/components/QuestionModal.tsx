@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type StoredQuestion } from "../api/tauri";
 import AnswerComposer from "./AnswerComposer";
 import ImageLightbox from "./ImageLightbox";
-import { ExternalLink, X } from "./icons";
+import { ChevronLeft, ExternalLink, X } from "./icons";
 import { formatDate, statusColor, statusLabel } from "../lib/format";
 import { openExternal } from "../lib/open";
 
@@ -12,9 +12,22 @@ interface Props {
   question: StoredQuestion;
   onClose: () => void;
   onSent: () => void;
+  /** Sıradaki soruya geç (varsa). Null ise listede son sıradayız. */
+  onNext?: (() => void) | null;
+  /** Önceki soruya geç. Null ise baştayız. */
+  onPrev?: (() => void) | null;
+  /** Otomatik sıradaki: cevap gönderildikten sonra onNext varsa otomatik çağrılır */
+  autoAdvance?: boolean;
 }
 
-export default function QuestionModal({ question, onClose, onSent }: Props) {
+export default function QuestionModal({
+  question,
+  onClose,
+  onSent,
+  onNext,
+  onPrev,
+  autoAdvance = true,
+}: Props) {
   const { t } = useTranslation();
   const nav = useNavigate();
   const [historyCount, setHistoryCount] = useState<number>(0);
@@ -32,11 +45,38 @@ export default function QuestionModal({ question, onClose, onSent }: Props) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      const target = e.target as HTMLElement | null;
+      const inEditable =
+        target &&
+        (target.tagName === "TEXTAREA" ||
+          target.tagName === "INPUT" ||
+          target.isContentEditable);
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      // Klavye nav sadece input/textarea dışındayken (çakışmayı önle)
+      if (inEditable) return;
+      if ((e.key === "ArrowDown" || e.key === "j") && onNext) {
+        e.preventDefault();
+        onNext();
+      } else if ((e.key === "ArrowUp" || e.key === "k") && onPrev) {
+        e.preventDefault();
+        onPrev();
+      }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, onNext, onPrev]);
+
+  function handleSent() {
+    onSent();
+    if (autoAdvance && onNext) {
+      onNext(); // modal kapanmasın, sıradaki yüklensin
+    } else {
+      onClose();
+    }
+  }
 
   return (
     <div
@@ -45,7 +85,7 @@ export default function QuestionModal({ question, onClose, onSent }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="card w-full max-w-3xl space-y-3 max-h-[92vh] overflow-y-auto">
+      <div className="card w-full max-w-5xl space-y-3 max-h-[92vh] overflow-y-auto">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-3 flex-1 min-w-0">
             {question.productImageUrl && (
@@ -82,9 +122,27 @@ export default function QuestionModal({ question, onClose, onSent }: Props) {
               )}
             </div>
           </div>
-          <button onClick={onClose} className="btn-ghost p-2" aria-label="Kapat">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onPrev?.()}
+              disabled={!onPrev}
+              className="btn-ghost p-2"
+              title={t("question.previousQuestion")}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => onNext?.()}
+              disabled={!onNext}
+              className="btn-ghost p-2"
+              title={t("question.nextQuestion")}
+            >
+              <ChevronLeft className="h-4 w-4 rotate-180" />
+            </button>
+            <button onClick={onClose} className="btn-ghost p-2" aria-label="Kapat">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="rounded-2xl rounded-tl-sm bg-bg-elev-2 px-4 py-3 text-sm">
@@ -116,10 +174,8 @@ export default function QuestionModal({ question, onClose, onSent }: Props) {
           productName={question.productName}
           customerName={question.customerName}
           storeName={question.storeName}
-          onSent={() => {
-            onSent();
-            onClose();
-          }}
+          showTemplatePanel={true}
+          onSent={handleSent}
         />
       </div>
     </div>

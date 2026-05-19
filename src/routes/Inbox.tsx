@@ -39,7 +39,8 @@ export default function Inbox() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [modalQuestion, setModalQuestion] = useState<StoredQuestion | null>(null);
+  const [modalIndex, setModalIndex] = useState<number | null>(null);
+  const [autoAdvance, setAutoAdvance] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const syncTimer = useRef<number | null>(null);
   const searchTimer = useRef<number | null>(null);
@@ -137,6 +138,13 @@ export default function Inbox() {
       if (searchTimer.current) window.clearTimeout(searchTimer.current);
     };
   }, [search]);
+
+  useEffect(() => {
+    api
+      .getSetting("auto_advance_after_answer")
+      .then((v) => setAutoAdvance(v !== "false"))
+      .catch(() => {});
+  }, []);
 
   function toggleSelect(id: number) {
     setSelected((prev) => {
@@ -271,32 +279,54 @@ export default function Inbox() {
         <div className="card text-center text-muted">{t("inbox.noQuestions")}</div>
       ) : (
         <div className="space-y-2">
-          {questions.map((q) => (
+          {questions.map((q, idx) => (
             <QuestionCard
               key={q.questionId}
               question={q}
               selectable
               selected={selected.has(q.questionId)}
               onToggleSelect={toggleSelect}
-              onOpen={() => setModalQuestion(q)}
+              onOpen={() => setModalIndex(idx)}
             />
           ))}
         </div>
       )}
 
-      {modalQuestion && (
+      {modalIndex !== null && questions[modalIndex] && (
         <QuestionModal
-          question={modalQuestion}
-          onClose={() => setModalQuestion(null)}
-          onSent={() => {
-            // Cevaplanan soruyu selected'tan çıkar (artık WAITING değil)
+          question={questions[modalIndex]}
+          autoAdvance={autoAdvance}
+          onPrev={modalIndex > 0 ? () => setModalIndex(modalIndex - 1) : null}
+          onNext={
+            modalIndex < questions.length - 1
+              ? () => setModalIndex(modalIndex + 1)
+              : null
+          }
+          onClose={() => setModalIndex(null)}
+          onSent={async () => {
+            // Cevaplanan soruyu selected'tan ve listeden çıkar
+            const sent = questions[modalIndex];
+            if (!sent) return;
             setSelected((prev) => {
               const next = new Set(prev);
-              next.delete(modalQuestion.questionId);
+              next.delete(sent.questionId);
               return next;
             });
-            sync(true);
-            load();
+            // Backend ile lokal status'u senkronize et
+            try {
+              await api.syncQuestion(sent.questionId);
+            } catch {}
+            // Listede sırayı kaybetmemek için: cevaplanan soruyu yerel listeden filtrele
+            // (bekleyen filtresindeysek hemen kaybolur)
+            if (status === "WAITING_FOR_ANSWER" || status === "UNANSWERED") {
+              setQuestions((prev) =>
+                prev.filter((q) => q.questionId !== sent.questionId)
+              );
+              // modalIndex artık geçersiz olabilir; bir sonrakine geçiş zaten gerçekleşti
+              if (modalIndex >= questions.length - 1) {
+                setModalIndex(null);
+              }
+            }
           }}
         />
       )}

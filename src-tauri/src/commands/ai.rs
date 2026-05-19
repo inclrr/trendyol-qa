@@ -146,6 +146,7 @@ fn build_provider(
     match provider {
         "gemini" => Ok(Box::new(GeminiClient::new(api_key)?)),
         "openrouter" => Ok(Box::new(OpenRouterClient::new(api_key, base_url)?)),
+        "ollama" => Ok(Box::new(crate::ai::ollama::OllamaClient::new(base_url)?)),
         other => Err(AppError::Validation(format!(
             "Bilinmeyen AI sağlayıcı: {}",
             other
@@ -162,7 +163,12 @@ fn get_provider_row(state: &AppState, provider: &str) -> AppResult<(String, Opti
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .map_err(|_| AppError::Validation(format!("{} sağlayıcısı yapılandırılmamış.", provider)))?;
-    let api_key = secrets::read_ai_key(provider)?;
+    // Ollama yerel; API key gerekmez. Diğer sağlayıcılar için key zorunlu.
+    let api_key = if provider == "ollama" {
+        secrets::read_ai_key(provider).unwrap_or_default()
+    } else {
+        secrets::read_ai_key(provider)?
+    };
     Ok((api_key, base_url))
 }
 
@@ -175,7 +181,11 @@ fn get_active_provider(state: &AppState) -> AppResult<(String, String, Option<St
             |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?)),
         )
         .map_err(|_| AppError::Validation("Aktif bir AI sağlayıcı yok.".into()))?;
-    let api_key = secrets::read_ai_key(&row.0)?;
+    let api_key = if row.0 == "ollama" {
+        secrets::read_ai_key(&row.0).unwrap_or_default()
+    } else {
+        secrets::read_ai_key(&row.0)?
+    };
     Ok((row.0, api_key, row.1, row.2))
 }
 
@@ -197,6 +207,11 @@ pub async fn get_ai_key_masked(provider: String) -> AppResult<Option<String>> {
 }
 
 #[tauri::command]
+pub async fn check_ollama_health(base_url: Option<String>) -> AppResult<bool> {
+    crate::ai::ollama::check_health(base_url).await
+}
+
+#[tauri::command]
 pub async fn list_models(
     state: State<'_, Arc<AppState>>,
     provider: String,
@@ -212,6 +227,84 @@ pub struct GenerateAnswerPayload {
     pub question_id: i64,
     #[serde(rename = "modelOverride")]
     pub model_override: Option<String>,
+}
+
+/// Arka plan AI cevap üretici. Scheduler tarafından her yeni soru için çağrılır.
+/// Hata olursa logger uyarısı verir, panik atmaz. Sonuç draft_ai_answer'a yazılır.
+pub async fn generate_draft_for_question(
+    state: Arc<AppState>,
+    question_id: i64,
+) -> AppResult<()> {
+    let (provider, api_key, selected_model, base_url) = get_active_provider(&state)?;
+    let model = selected_model.ok_or_else(|| AppError::Validation("Model seçilmemiş".into()))?;
+
+    let (q_text, customer_id, product_name) = {
+        let conn = state.db.get()?;
+        conn.query_row(
+            "SELECT text, customer_id, product_name FROM questions WHERE question_id = ?1",
+            params![question_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<i64>>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .map_err(|_| AppError::Validation("Soru bulunamadı.".into()))?
+    };
+
+    let mut history: Vec<(String, String)> = Vec::new();
+    if let Some(cid) = customer_id {
+        let conn = state.db.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT text, answer_text FROM questions WHERE customer_id = ?1 AND question_id != ?2 \
+             AND answer_text IS NOT NULL ORDER BY creation_date ASC",
+        )?;
+        let rows = stmt.query_map(params![cid, question_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+        })?;
+        for row in rows.flatten() {
+            if let Some(a) = row.1 {
+                history.push((row.0, a));
+            }
+        }
+    }
+
+    let rag = crate::ai::rag::fetch_similar(&state, &q_text, 5)?;
+    let rag_text = crate::ai::rag::format_context(&rag);
+    let active_training: Option<String> = {
+        let conn = state.db.get()?;
+        conn.query_row(
+            "SELECT system_prompt FROM ai_training_runs WHERE active = 1 ORDER BY id DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+    let system_prompt = crate::ai::prompt::base_system_prompt(active_training.as_deref());
+    let user_prompt =
+        crate::ai::prompt::build_answer_prompt(&q_text, product_name.as_deref(), &history, &rag_text);
+
+    let client = build_provider(&provider, base_url, api_key)?;
+    let text = client
+        .generate(GenerationRequest {
+            system_prompt: Some(&system_prompt),
+            user_prompt: &user_prompt,
+            model: &model,
+            max_tokens: Some(1024),
+        })
+        .await?
+        .trim()
+        .to_string();
+
+    let now = Utc::now().timestamp_millis();
+    let conn = state.db.get()?;
+    conn.execute(
+        "UPDATE questions SET draft_ai_answer = ?1, draft_ai_generated_at = ?2 WHERE question_id = ?3",
+        params![text, now, question_id],
+    )?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -280,7 +373,7 @@ pub async fn generate_answer(
             system_prompt: Some(&system_prompt),
             user_prompt: &user_prompt,
             model: &model,
-            max_tokens: Some(2048),
+            max_tokens: Some(1024),
         })
         .await?;
     text = text.trim().to_string();

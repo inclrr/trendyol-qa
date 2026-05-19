@@ -5,6 +5,7 @@ mod db;
 mod errors;
 mod notifier;
 mod scheduler;
+mod secret_store;
 mod state;
 mod tray;
 mod trendyol;
@@ -41,9 +42,67 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
+
+            // SecretStore'u en önce init et (DB'den önce, çünkü secrets DB'ye bağlı değil)
+            let app_data_dir = app_handle
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("AppData yolu alınamadı: {}", e))?;
+            secret_store::SecretStore::init(&app_data_dir)
+                .map_err(|e| format!("SecretStore init başarısız: {}", e))?;
+
             let state = AppState::initialize(&app_handle)?;
             let state_arc = Arc::new(state);
             app.manage(state_arc.clone());
+
+            // v0.4.x → v0.5.0 keyring migration (tek seferlik, settings bayrağı ile)
+            let already_migrated = {
+                if let Ok(conn) = state_arc.db.get() {
+                    conn.query_row(
+                        "SELECT value FROM settings WHERE key = 'keyring_migrated'",
+                        [],
+                        |r| r.get::<_, String>(0),
+                    )
+                    .map(|v| v == "true")
+                    .unwrap_or(false)
+                } else {
+                    false
+                }
+            };
+            if !already_migrated {
+                let stores: Vec<(i64, String, String)> = state_arc
+                    .db
+                    .get()
+                    .ok()
+                    .and_then(|conn| {
+                        conn.prepare("SELECT seller_id, name, environment FROM stores").ok().and_then(|mut stmt| {
+                            stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))
+                                .ok()
+                                .map(|rows| rows.flatten().collect())
+                        })
+                    })
+                    .unwrap_or_default();
+                let providers: Vec<String> = state_arc
+                    .db
+                    .get()
+                    .ok()
+                    .and_then(|conn| {
+                        conn.prepare("SELECT provider FROM ai_providers").ok().and_then(|mut stmt| {
+                            stmt.query_map([], |r| r.get::<_, String>(0))
+                                .ok()
+                                .map(|rows| rows.flatten().collect())
+                        })
+                    })
+                    .unwrap_or_default();
+                if let Err(e) = commands::secrets::migrate_from_keyring(&stores, &providers) {
+                    log::warn!("Keyring migration başarısız (yine de devam): {}", e);
+                } else if let Ok(conn) = state_arc.db.get() {
+                    let _ = conn.execute(
+                        "INSERT OR REPLACE INTO settings(key, value) VALUES ('keyring_migrated', 'true')",
+                        [],
+                    );
+                }
+            }
 
             tray::install(&app_handle)?;
 
@@ -90,6 +149,7 @@ pub fn run() {
             commands::stores::delete_store,
             commands::stores::test_store_connection,
             commands::questions::sync_now,
+            commands::questions::sync_question,
             commands::questions::list_questions,
             commands::questions::get_question,
             commands::questions::get_customer_history,
@@ -106,6 +166,7 @@ pub fn run() {
             commands::ai::set_active_provider,
             commands::ai::delete_ai_provider,
             commands::ai::list_models,
+            commands::ai::check_ollama_health,
             commands::ai::generate_answer,
             commands::ai::train_ai,
             commands::ai::get_active_training,
