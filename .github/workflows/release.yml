@@ -66,7 +66,9 @@ jobs:
           }
           $notes = $notes.Trim()
           if (-not $notes) { $notes = "v$version" }
-          $url = "https://github.com/${{ github.repository }}/releases/download/v$version/" + [System.Web.HttpUtility]::UrlEncode($exe.Name).Replace('+','%20')
+          # GitHub release asset upload'ında dosya adındaki boşluklar otomatik olarak nokta'ya çevriliyor
+          $assetName = $exe.Name -replace ' ', '.'
+          $url = "https://github.com/${{ github.repository }}/releases/download/v$version/$assetName"
 
           $manifest = [ordered]@{
             version = $version
