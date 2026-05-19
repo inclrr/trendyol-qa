@@ -57,7 +57,14 @@ jobs:
           }
           $signature = (Get-Content $sig.FullName -Raw).Trim()
           $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-          $notes = git tag -l --format='%(contents)' "v$version"
+          # git tag -l çıktısı multi-line ise PowerShell array döner; tek string'e join
+          $notesRaw = git tag -l --format='%(contents)' "v$version"
+          if ($notesRaw -is [array]) {
+            $notes = ($notesRaw | Where-Object { $_ -ne $null }) -join "`n"
+          } else {
+            $notes = [string]$notesRaw
+          }
+          $notes = $notes.Trim()
           if (-not $notes) { $notes = "v$version" }
           $url = "https://github.com/${{ github.repository }}/releases/download/v$version/" + [System.Web.HttpUtility]::UrlEncode($exe.Name).Replace('+','%20')
 
