@@ -66,28 +66,49 @@ export default function Stores() {
 
   async function save() {
     if (!editing) return;
+    // Frontend validation
+    if (editing.name.trim() === "") {
+      setError("Mağaza adı boş olamaz.");
+      return;
+    }
+    if (!editing.id) {
+      if (!Number.isInteger(editing.sellerId) || editing.sellerId <= 0) {
+        setError("Geçerli bir Satıcı ID (sellerId) giriniz.");
+        return;
+      }
+      if (editing.apiKey.trim().length < 10 || editing.apiSecret.trim().length < 10) {
+        setError("API Key ve Secret en az 10 karakter olmalıdır.");
+        return;
+      }
+    } else if (
+      (editing.apiKey && editing.apiKey.length < 10) ||
+      (editing.apiSecret && editing.apiSecret.length < 10)
+    ) {
+      setError("Güncelleme için yeni API Key/Secret de en az 10 karakter olmalı (veya boş bırakın).");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       if (editing.id) {
         await api.updateStore({
           id: editing.id,
-          name: editing.name,
+          name: editing.name.trim(),
           environment: editing.environment,
-          integratorName: editing.integratorName,
+          integratorName: editing.integratorName.trim() || "SelfIntegration",
           active: editing.active,
           apiKey: editing.apiKey || undefined,
           apiSecret: editing.apiSecret || undefined,
         });
       } else {
         await api.createStore({
-          name: editing.name,
+          name: editing.name.trim(),
           sellerId: editing.sellerId,
           environment: editing.environment,
-          integratorName: editing.integratorName,
+          integratorName: editing.integratorName.trim() || "SelfIntegration",
           active: editing.active,
-          apiKey: editing.apiKey,
-          apiSecret: editing.apiSecret,
+          apiKey: editing.apiKey.trim(),
+          apiSecret: editing.apiSecret.trim(),
         });
       }
       await refresh();
@@ -145,12 +166,18 @@ export default function Stores() {
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">{s.name}</span>
                     {s.active ? (
-                      <span className="badge bg-success/15 text-success">Aktif</span>
+                      <span className="badge bg-success/15 text-success">
+                        {t("stores.statusActive")}
+                      </span>
                     ) : (
-                      <span className="badge bg-muted/15 text-muted">Pasif</span>
+                      <span className="badge bg-muted/15 text-muted">
+                        {t("stores.statusInactive")}
+                      </span>
                     )}
                     <span className="badge bg-bg-elev-2 text-muted border border-border">
-                      {s.environment === "prod" ? "Canlı" : "Test"}
+                      {s.environment === "prod"
+                        ? t("stores.envShortProd")
+                        : t("stores.envShortStage")}
                     </span>
                   </div>
                   <div className="mt-1 text-xs text-muted">

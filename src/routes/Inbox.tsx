@@ -40,8 +40,10 @@ export default function Inbox() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [modalQuestion, setModalQuestion] = useState<StoredQuestion | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const syncTimer = useRef<number | null>(null);
   const searchTimer = useRef<number | null>(null);
+  const loadGenRef = useRef(0);
 
   function buildRange() {
     return {
@@ -51,7 +53,9 @@ export default function Inbox() {
   }
 
   async function load() {
+    const gen = ++loadGenRef.current;
     setLoading(true);
+    setError(null);
     try {
       const { start, end } = buildRange();
       const list = await api.listQuestions({
@@ -62,9 +66,18 @@ export default function Inbox() {
         endDate: end,
         limit: 500,
       });
-      setQuestions(list);
+      // Race korumasi: yeni bir load tetiklendi ise eski sonucu yok say
+      if (gen === loadGenRef.current) {
+        setQuestions(list);
+      }
+    } catch (e: any) {
+      if (gen === loadGenRef.current) {
+        setError(String(e));
+      }
     } finally {
-      setLoading(false);
+      if (gen === loadGenRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -87,7 +100,7 @@ export default function Inbox() {
           const errs = res.errors
             .map((e) => `${e.storeName}: ${e.message}`)
             .join(" · ");
-          msg += ` | Hatalar: ${errs}`;
+          msg += ` | ${t("inbox.errorsLabel")}: ${errs}`;
         }
         setSyncMsg(msg);
       }
@@ -102,11 +115,14 @@ export default function Inbox() {
     }
   }
 
-  // Filtre değişince hem yerelde yükle hem de uzaktan sessizce senkronize et
+  // Filtre değişince önce yerel veriyi yükle, sonra arkadan senkronize edip yeniden yükle.
+  // Race korumasi loadGenRef ile sağlanır.
   useEffect(() => {
     load();
     if (syncTimer.current) window.clearTimeout(syncTimer.current);
-    syncTimer.current = window.setTimeout(() => sync(true), 400);
+    syncTimer.current = window.setTimeout(async () => {
+      await sync(true);
+    }, 400);
     return () => {
       if (syncTimer.current) window.clearTimeout(syncTimer.current);
     };
@@ -229,6 +245,15 @@ export default function Inbox() {
       {syncMsg && (
         <div className="rounded-lg border border-border bg-bg-elev px-4 py-2 text-sm">
           {syncMsg}
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center justify-between rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
+          <span>{error}</span>
+          <button onClick={() => load()} className="btn-ghost text-xs">
+            {t("app.tryAgain")}
+          </button>
         </div>
       )}
 

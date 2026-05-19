@@ -60,7 +60,7 @@ export default function QuestionModal({ question, onClose, onSent }: Props) {
                 </span>
               </div>
               <div className="text-xs text-muted mt-1">
-                {question.customerName || "Anonim Müşteri"} ·{" "}
+                {question.customerName || t("app.anonymous")} ·{" "}
                 {formatDate(question.creationDate)}
               </div>
               {question.productWebUrl && (
@@ -85,7 +85,7 @@ export default function QuestionModal({ question, onClose, onSent }: Props) {
 
         {question.answerText && (
           <div className="rounded-2xl rounded-tr-sm bg-brand/10 px-4 py-3 text-sm">
-            <div className="text-[10px] text-muted mb-1">Mevcut Cevap</div>
+            <div className="text-[10px] text-muted mb-1">{t("question.existingAnswer")}</div>
             {question.answerText}
           </div>
         )}
@@ -98,13 +98,16 @@ export default function QuestionModal({ question, onClose, onSent }: Props) {
             }}
             className="btn-secondary w-full"
           >
-            💬 Bu müşterinin {historyCount} önceki soru-cevabı var — Tam sohbete git
+            💬 {t("question.previousQAFull", { count: historyCount })}
           </button>
         )}
 
         <AnswerComposer
           questionId={question.questionId}
           questionStatus={question.status}
+          productName={question.productName}
+          customerName={question.customerName}
+          storeName={question.storeName}
           onSent={() => {
             onSent();
             onClose();

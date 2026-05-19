@@ -41,7 +41,7 @@ export default function BulkAnswer() {
           message:
             q.status === "WAITING_FOR_ANSWER"
               ? undefined
-              : "Cevaplanamaz statü",
+              : t("bulk.cannotAnswerStatus"),
         }))
       );
     })();
@@ -85,7 +85,7 @@ export default function BulkAnswer() {
     setGenerating(false);
   }
 
-  async function sendAll() {
+  async function sendAll(ignoreBanned = false) {
     setBusy(true);
     const targets = rows.filter(
       (r) => r.state === "ready" && r.text.trim().length >= 10
@@ -98,7 +98,7 @@ export default function BulkAnswer() {
     }));
 
     try {
-      const results = await api.submitBulkAnswers(payload);
+      const results = await api.submitBulkAnswers(payload, ignoreBanned);
       const byId = new Map<number, SubmitAnswerResult>();
       results.forEach((r) => byId.set(r.questionId, r));
       setRows((rs) =>
@@ -112,6 +112,7 @@ export default function BulkAnswer() {
           };
         })
       );
+      // done = işlenen tüm yanıtlar (başarılı + başarısız)
       setProgress({ done: results.length, total: targets.length });
     } catch (e: any) {
       alert(String(e));
@@ -158,7 +159,7 @@ export default function BulkAnswer() {
               ))}
             </select>
             <button onClick={applyTemplateToAll} className="btn-secondary">
-              Tümüne Uygula
+              {t("bulk.applyToAll")}
             </button>
           </div>
         )}
@@ -172,21 +173,28 @@ export default function BulkAnswer() {
               <Sparkles className="mr-1 h-4 w-4" />
               {generating ? t("question.generating") : t("bulk.generateAll")}
             </button>
-            <span className="text-xs text-muted">
-              Her soru için ayrı AI çağrısı yapılır. Eğitim verisi ve müşteri sohbet geçmişi otomatik kullanılır.
-            </span>
+            <span className="text-xs text-muted">{t("bulk.aiNote")}</span>
           </div>
         )}
 
         <div className="flex items-center gap-2">
           <button
-            onClick={sendAll}
+            onClick={() => sendAll(false)}
             disabled={busy || rows.filter((r) => r.state === "ready").length === 0}
             className="btn-primary"
           >
             <Send className="mr-1 h-4 w-4" />
             {busy ? t("question.sending") : t("bulk.sendAll")}
           </button>
+          {rows.some((r) => r.state === "failed" && /yasaklı|şüpheli/i.test(r.message ?? "")) && (
+            <button
+              onClick={() => sendAll(true)}
+              disabled={busy}
+              className="btn-danger"
+            >
+              {t("question.sendAnyway")}
+            </button>
+          )}
           {progress.total > 0 && (
             <span className="text-sm text-muted">
               {t("bulk.progress", { done: progress.done, total: progress.total })}

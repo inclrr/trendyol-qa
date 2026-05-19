@@ -42,7 +42,7 @@ async fn run_cycle(app: &AppHandle, state: &Arc<AppState>) -> Result<(), String>
             Ok((new, _updated, items)) => {
                 total_new += new;
                 if !items.is_empty() {
-                    notify_new_questions(app, &store.name, &items);
+                    notify_new_questions(app, state, &store.name, &items);
                     let ids: Vec<i64> = items.iter().map(|i| i.id).collect();
                     if !ids.is_empty() {
                         if let Ok(conn) = state.db.get() {

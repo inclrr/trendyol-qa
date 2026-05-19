@@ -86,45 +86,89 @@ impl TrendyolClient {
         self.burst_limiter.until_ready().await;
     }
 
-    async fn map_status<T: for<'de> serde::Deserialize<'de>>(
-        resp: reqwest::Response,
-    ) -> AppResult<T> {
-        let status = resp.status();
-        if status.is_success() {
-            return resp.json::<T>().await.map_err(|e| {
-                AppError::Other(format!("Yanıt JSON parse hatası: {}", e))
-            });
+    /// Retry edilebilir HTTP istek: 429/502/503/504 ve network error'larda exponential backoff
+    /// ile maksimum 3 deneme yapar.
+    async fn send_with_retry<T, F>(
+        &self,
+        limiter: &Limiter,
+        build_request: F,
+    ) -> AppResult<T>
+    where
+        T: for<'de> serde::Deserialize<'de>,
+        F: Fn() -> reqwest::RequestBuilder,
+    {
+        const BACKOFFS_SEC: &[u64] = &[1, 3, 9];
+        let max_attempts = BACKOFFS_SEC.len();
+
+        for attempt in 0..max_attempts {
+            self.wait_limits(limiter).await;
+            match build_request().send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_success() {
+                        return resp.json::<T>().await.map_err(|e| {
+                            AppError::Other(format!("Yanıt JSON parse hatası: {}", e))
+                        });
+                    }
+                    let code = status.as_u16();
+                    let retryable = matches!(code, 429 | 502 | 503 | 504);
+                    if retryable && attempt < max_attempts - 1 {
+                        let backoff = BACKOFFS_SEC[attempt];
+                        log::warn!(
+                            "Trendyol HTTP {} alındı, {}s sonra retry (deneme {}/{})",
+                            code,
+                            backoff,
+                            attempt + 1,
+                            max_attempts
+                        );
+                        tokio::time::sleep(Duration::from_secs(backoff)).await;
+                        continue;
+                    }
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(match code {
+                        401 => AppError::Unauthorized,
+                        403 => AppError::Forbidden,
+                        429 => AppError::RateLimited,
+                        _ => AppError::Trendyol {
+                            status: code,
+                            message: body,
+                        },
+                    });
+                }
+                Err(e) => {
+                    let retryable = e.is_timeout() || e.is_connect();
+                    if retryable && attempt < max_attempts - 1 {
+                        let backoff = BACKOFFS_SEC[attempt];
+                        log::warn!(
+                            "Trendyol network hatası: {}, {}s sonra retry (deneme {}/{})",
+                            e,
+                            backoff,
+                            attempt + 1,
+                            max_attempts
+                        );
+                        tokio::time::sleep(Duration::from_secs(backoff)).await;
+                        continue;
+                    }
+                    return Err(AppError::Http(e.to_string()));
+                }
+            }
         }
-        let code = status.as_u16();
-        let body = resp.text().await.unwrap_or_default();
-        Err(match code {
-            401 => AppError::Unauthorized,
-            403 => AppError::Forbidden,
-            429 => AppError::RateLimited,
-            _ => AppError::Trendyol {
-                status: code,
-                message: body,
-            },
-        })
+        Err(AppError::Other("Retry mantığı beklenmedik şekilde sonlandı".into()))
     }
 
     pub async fn fetch_questions(
         &self,
         params: &QuestionsFilter,
     ) -> AppResult<QuestionFilterResponse> {
-        self.wait_limits(&self.qa_limiter).await;
         let url = format!(
             "{}/integration/qna/sellers/{}/questions/filter",
             self.cfg.base_url, self.cfg.seller_id
         );
-        let resp = self
-            .http
-            .get(&url)
-            .headers(self.base_headers()?)
-            .query(params)
-            .send()
-            .await?;
-        Self::map_status::<QuestionFilterResponse>(resp).await
+        let headers = self.base_headers()?;
+        self.send_with_retry::<QuestionFilterResponse, _>(&self.qa_limiter, || {
+            self.http.get(&url).headers(headers.clone()).query(params)
+        })
+        .await
     }
 
     pub async fn create_answer(
@@ -132,21 +176,18 @@ impl TrendyolClient {
         question_id: i64,
         text: &str,
     ) -> AppResult<AnswerResponse> {
-        self.wait_limits(&self.answer_limiter).await;
         let url = format!(
             "{}/integration/qna/sellers/{}/questions/{}/answers",
             self.cfg.base_url, self.cfg.seller_id, question_id
         );
-        let resp = self
-            .http
-            .post(&url)
-            .headers(self.base_headers()?)
-            .json(&AnswerRequest {
-                text: text.to_string(),
-            })
-            .send()
-            .await?;
-        Self::map_status::<AnswerResponse>(resp).await
+        let headers = self.base_headers()?;
+        let body = AnswerRequest {
+            text: text.to_string(),
+        };
+        self.send_with_retry::<AnswerResponse, _>(&self.answer_limiter, || {
+            self.http.post(&url).headers(headers.clone()).json(&body)
+        })
+        .await
     }
 
     pub async fn test_connection(&self) -> AppResult<()> {

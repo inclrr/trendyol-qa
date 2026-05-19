@@ -1,10 +1,20 @@
+use crate::state::AppState;
 use crate::trendyol::models::TrendyolQuestion;
+use std::sync::Arc;
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
-pub fn notify_new_questions(app: &AppHandle, store_name: &str, items: &[TrendyolQuestion]) {
+pub fn notify_new_questions(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+    store_name: &str,
+    items: &[TrendyolQuestion],
+) {
     if items.is_empty() {
         return;
+    }
+    for item in items {
+        state.push_notification(item.id);
     }
     let title = if items.len() == 1 {
         format!("Yeni soru — {}", store_name)

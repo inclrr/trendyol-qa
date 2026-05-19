@@ -15,17 +15,27 @@ export default function QuestionDetail() {
   const nav = useNavigate();
   const [question, setQuestion] = useState<StoredQuestion | null>(null);
   const [history, setHistory] = useState<StoredQuestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const qid = Number(id);
 
   async function load() {
     if (!qid) return;
-    const q = await api.getQuestion(qid);
-    setQuestion(q);
-    if (q?.customerId) {
-      const h = await api.getCustomerHistory(q.customerId, q.storeId, qid);
-      setHistory(h);
-    } else {
-      setHistory([]);
+    setLoading(true);
+    setError(null);
+    try {
+      const q = await api.getQuestion(qid);
+      setQuestion(q);
+      if (q?.customerId) {
+        const h = await api.getCustomerHistory(q.customerId, q.storeId, qid);
+        setHistory(h);
+      } else {
+        setHistory([]);
+      }
+    } catch (e: any) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -39,7 +49,16 @@ export default function QuestionDetail() {
         <button onClick={() => nav(-1)} className="btn-ghost mb-4">
           <ChevronLeft className="mr-1 h-4 w-4" /> {t("app.back")}
         </button>
-        <div>{t("app.loading")}</div>
+        {error ? (
+          <div className="card border-danger/30 bg-danger/10 text-sm text-danger">
+            <p>{error}</p>
+            <button onClick={load} className="btn-secondary mt-3">
+              {t("app.tryAgain")}
+            </button>
+          </div>
+        ) : (
+          <div>{loading ? t("app.loading") : "Soru bulunamadı."}</div>
+        )}
       </div>
     );
   }
@@ -117,6 +136,9 @@ export default function QuestionDetail() {
           <AnswerComposer
             questionId={question.questionId}
             questionStatus={question.status}
+            productName={question.productName}
+            customerName={question.customerName}
+            storeName={question.storeName}
             onSent={load}
           />
         </div>

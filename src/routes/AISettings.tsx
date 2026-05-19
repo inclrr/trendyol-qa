@@ -5,6 +5,7 @@ import {
   type ActiveTraining,
   type AiModel,
   type AiProviderRow,
+  type TrainingRecord,
 } from "../api/tauri";
 import { useAppStore } from "../stores/useAppStore";
 import { useAiStore } from "../stores/useAiStore";
@@ -39,8 +40,12 @@ const DEFAULTS: ProviderForm[] = [
 export default function AISettings() {
   const { t } = useTranslation();
   const stores = useAppStore((s) => s.stores);
-  const { training, trainMsg, trainErr, trainProgressLabel, startTraining } =
+  const { training, trainMsg, trainErr, trainProgressLabel, startTraining, initListeners } =
     useAiStore();
+
+  useEffect(() => {
+    initListeners();
+  }, [initListeners]);
   const [list, setList] = useState<AiProviderRow[]>([]);
   const [forms, setForms] = useState<ProviderForm[]>(DEFAULTS);
   const [maskedKeys, setMaskedKeys] = useState<Record<string, string | null>>(
@@ -57,6 +62,10 @@ export default function AISettings() {
   );
   const [trainStores, setTrainStores] = useState<number[]>([]);
   const [active, setActive] = useState<ActiveTraining | null>(null);
+  const [trainings, setTrainings] = useState<TrainingRecord[]>([]);
+  const [promptDraft, setPromptDraft] = useState<string>("");
+  const [promptSaving, setPromptSaving] = useState(false);
+  const [promptSavedMsg, setPromptSavedMsg] = useState<string | null>(null);
 
   async function refresh() {
     const rows = await api.listAiProviders();
@@ -73,7 +82,10 @@ export default function AISettings() {
         };
       })
     );
-    setActive(await api.getActiveTraining());
+    const act = await api.getActiveTraining();
+    setActive(act);
+    setPromptDraft(act?.systemPrompt ?? "");
+    setTrainings(await api.listTrainings());
     // Maskeli API key'leri yükle
     const masked: Record<string, string | null> = {};
     for (const r of rows) {
@@ -139,7 +151,7 @@ export default function AISettings() {
   }
 
   async function deleteProvider(provider: string) {
-    if (!confirm("Bu sağlayıcıyı silmek istediğinize emin misiniz?")) return;
+    if (!confirm(t("ai.deleteProviderConfirm"))) return;
     await api.deleteAiProvider(provider);
     await refresh();
   }
@@ -148,6 +160,42 @@ export default function AISettings() {
     const start = new Date(trainStart).getTime();
     const end = new Date(trainEnd).getTime() + 24 * 60 * 60 * 1000 - 1;
     startTraining(start, end, trainStores.length > 0 ? trainStores : null);
+  }
+
+  async function savePromptEdits() {
+    if (!active) return;
+    setPromptSaving(true);
+    try {
+      await api.updateTrainingPrompt(active.id, promptDraft);
+      await refresh();
+      setPromptSavedMsg(t("app.save") + " ✓");
+      setTimeout(() => setPromptSavedMsg(null), 2500);
+    } catch (e: any) {
+      alert(String(e));
+    } finally {
+      setPromptSaving(false);
+    }
+  }
+
+  async function resetPromptEdits() {
+    if (!active) return;
+    try {
+      await api.resetTrainingPrompt(active.id);
+      await refresh();
+    } catch (e: any) {
+      alert(String(e));
+    }
+  }
+
+  async function activateTraining(id: number) {
+    await api.activateTraining(id);
+    await refresh();
+  }
+
+  async function deleteTraining(id: number) {
+    if (!confirm("Bu eğitim kaydını silmek istediğinize emin misiniz?")) return;
+    await api.deleteTraining(id);
+    await refresh();
   }
 
   return (
@@ -190,17 +238,13 @@ export default function AISettings() {
                   <label className="label">{t("ai.apiKey")}</label>
                   {row?.hasApiKey && maskedKeys[form.provider] && (
                     <div className="mb-1 rounded-md bg-bg-elev-2 px-2 py-1 font-mono text-xs text-muted">
-                      Kayıtlı: {maskedKeys[form.provider]}
+                      {t("ai.savedKeyLabel")}: {maskedKeys[form.provider]}
                     </div>
                   )}
                   <input
                     type="password"
                     className="input"
-                    placeholder={
-                      row?.hasApiKey
-                        ? "Değiştirmek için yeni key'i yazıp Kaydet'e basın"
-                        : ""
-                    }
+                    placeholder={row?.hasApiKey ? t("ai.keyHintReplace") : ""}
                     value={form.apiKey}
                     onChange={(e) =>
                       setForms((prev) =>
@@ -387,12 +431,41 @@ export default function AISettings() {
                 {formatDate(active.createdAt)} tarihinde eğitildi
               </div>
               <div>
-                <div className="mb-1 text-xs text-muted">
-                  {t("ai.systemPrompt")} ({active.systemPrompt.length} karakter)
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-xs text-muted">
+                    {t("ai.systemPrompt")} ({promptDraft.length} karakter)
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={resetPromptEdits}
+                      className="btn-ghost text-xs"
+                      title={t("ai.resetPrompt")}
+                    >
+                      {t("ai.resetPrompt")}
+                    </button>
+                    <button
+                      onClick={savePromptEdits}
+                      disabled={
+                        promptSaving || promptDraft === active.systemPrompt
+                      }
+                      className="btn-primary text-xs"
+                    >
+                      {promptSaving
+                        ? t("app.saving")
+                        : t("ai.savePromptEdits")}
+                    </button>
+                    {promptSavedMsg && (
+                      <span className="text-xs text-success">
+                        {promptSavedMsg}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <pre className="whitespace-pre-wrap rounded-lg bg-bg-elev-2 p-3 text-xs max-h-96 overflow-auto">
-                  {active.systemPrompt}
-                </pre>
+                <textarea
+                  className="input min-h-[200px] max-h-[400px] font-mono text-xs"
+                  value={promptDraft}
+                  onChange={(e) => setPromptDraft(e.target.value)}
+                />
               </div>
             </div>
           ) : (
@@ -401,6 +474,52 @@ export default function AISettings() {
             </div>
           )}
         </div>
+
+        {trainings.length > 0 && (
+          <div className="border-t border-border pt-3">
+            <h4 className="mb-2 text-sm font-semibold text-muted">
+              {t("ai.trainingHistory")}
+            </h4>
+            <div className="space-y-2">
+              {trainings.map((tr) => (
+                <div
+                  key={tr.id}
+                  className="flex items-center justify-between rounded-lg border border-border bg-bg-elev-2 px-3 py-2 text-xs"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium">
+                      {tr.name ?? `#${tr.id}`}
+                      {tr.active && (
+                        <span className="ml-2 badge bg-success/15 text-success">
+                          {t("ai.active")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-muted">
+                      {tr.qaPairCount} cevap · {formatDate(tr.createdAt)}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    {!tr.active && (
+                      <button
+                        onClick={() => activateTraining(tr.id)}
+                        className="btn-secondary text-xs"
+                      >
+                        {t("ai.activate")}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteTraining(tr.id)}
+                      className="btn-ghost text-xs text-danger"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

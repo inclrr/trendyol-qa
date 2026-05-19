@@ -254,9 +254,10 @@ pub async fn sync_store(
     let mut updated_count = 0i64;
     let mut new_items: Vec<TrendyolQuestion> = Vec::new();
 
-    let conn = state.db.get()?;
+    let mut conn = state.db.get()?;
+    let tx = conn.transaction()?;
     for q in resp.content.iter() {
-        let exists: Option<String> = conn
+        let exists: Option<String> = tx
             .query_row(
                 "SELECT status FROM questions WHERE question_id = ?1",
                 params![q.id],
@@ -267,7 +268,7 @@ pub async fn sync_store(
         let raw_json = serde_json::to_string(q).ok();
         let answer = q.answer.clone().unwrap_or_default();
         if let Some(prev_status) = exists {
-            conn.execute(
+            tx.execute(
                 "UPDATE questions SET status = ?1, answer_id = ?2, answer_text = ?3, \
                  answer_creation_date = ?4, reported_date = ?5, rejected_date = ?6, raw_json = ?7, \
                  fetched_at = ?8, \
@@ -304,7 +305,7 @@ pub async fn sync_store(
                 updated_count += 1;
             }
         } else {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO questions (question_id, store_id, customer_id, customer_name, text, status, \
                  creation_date, product_main_id, product_name, product_web_url, product_image_url, \
                  barcode, public, answer_id, answer_text, answer_creation_date, reported_date, \
@@ -337,6 +338,7 @@ pub async fn sync_store(
             new_items.push(q.clone());
         }
     }
+    tx.commit()?;
     Ok((new_count, updated_count, new_items))
 }
 
@@ -384,12 +386,26 @@ pub async fn sync_now(
     Ok(summary)
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingProgress {
+    pub store_idx: usize,
+    pub store_total: usize,
+    pub store_name: String,
+    pub page_idx: i64,
+    pub pairs_found: usize,
+    pub phase: String,
+}
+
 pub async fn fetch_history_for_training(
     state: &AppState,
+    app: &tauri::AppHandle,
     store_ids: Option<Vec<i64>>,
     start_date: i64,
     end_date: i64,
 ) -> AppResult<Vec<(String, String)>> {
+    use tauri::Emitter;
+
     let stores = match store_ids {
         Some(ids) if !ids.is_empty() => ids
             .iter()
@@ -397,10 +413,22 @@ pub async fn fetch_history_for_training(
             .collect::<Vec<_>>(),
         _ => list_active_stores(state)?,
     };
+    let store_total = stores.len();
 
     let mut all_pairs: Vec<(String, String)> = Vec::new();
-    for store in stores {
-        let client = ensure_client(state, &store)?;
+    for (idx, store) in stores.iter().enumerate() {
+        let _ = app.emit(
+            "ai-training:progress",
+            TrainingProgress {
+                store_idx: idx,
+                store_total,
+                store_name: store.name.clone(),
+                page_idx: 0,
+                pairs_found: all_pairs.len(),
+                phase: "fetching".into(),
+            },
+        );
+        let client = ensure_client(state, store)?;
         // 2 hafta limiti var - parçalı çekim
         let mut window_start = start_date;
         let two_weeks: i64 = 14 * 24 * 60 * 60 * 1000;
@@ -420,19 +448,20 @@ pub async fn fetch_history_for_training(
                 let mut paged = filter.clone();
                 paged.page = Some(page);
                 let resp = client.fetch_questions(&paged).await?;
+                // FTS5 update'leri sayfa bazında tek transaction içinde
+                let mut conn = state.db.get()?;
+                let tx = conn.transaction()?;
                 for q in resp.content.iter() {
                     if let Some(ans) = &q.answer {
                         if let Some(text) = &ans.text {
                             if !text.trim().is_empty() {
                                 all_pairs.push((q.text.clone(), text.clone()));
-                                // FTS5 indeksine kaydet — duplikasyon olmaması için
-                                // önce bu soru için varsa eski kaydı sil
-                                let conn = state.db.get()?;
-                                let _ = conn.execute(
+                                // Duplikasyon engeli: önce sil sonra ekle
+                                let _ = tx.execute(
                                     "DELETE FROM qa_index WHERE question_id = ?1",
                                     params![q.id],
                                 );
-                                let _ = conn.execute(
+                                let _ = tx.execute(
                                     "INSERT INTO qa_index(question_text, answer_text, store_id, question_id) \
                                      VALUES (?1, ?2, ?3, ?4)",
                                     params![q.text, text, store.id, q.id],
@@ -441,6 +470,18 @@ pub async fn fetch_history_for_training(
                         }
                     }
                 }
+                tx.commit()?;
+                let _ = app.emit(
+                    "ai-training:progress",
+                    TrainingProgress {
+                        store_idx: idx,
+                        store_total,
+                        store_name: store.name.clone(),
+                        page_idx: page,
+                        pairs_found: all_pairs.len(),
+                        phase: "fetching".into(),
+                    },
+                );
                 if resp.content.is_empty() || resp.total_pages <= page + 1 {
                     break;
                 }
@@ -452,6 +493,17 @@ pub async fn fetch_history_for_training(
             window_start = window_end + 1;
         }
     }
+    let _ = app.emit(
+        "ai-training:progress",
+        TrainingProgress {
+            store_idx: store_total,
+            store_total,
+            store_name: String::new(),
+            page_idx: 0,
+            pairs_found: all_pairs.len(),
+            phase: "fetched".into(),
+        },
+    );
     if all_pairs.is_empty() {
         return Err(AppError::Validation(
             "Seçilen aralıkta cevaplanmış soru bulunamadı.".into(),

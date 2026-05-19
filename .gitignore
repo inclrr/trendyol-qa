@@ -20,3 +20,6 @@ src-tauri/Cargo.lock
 # Tauri updater signing keys (NEVER commit!)
 *.key
 *.key.pub
+
+# Release artefacts (sadece GitHub Release asset olarak yayınla)
+release/

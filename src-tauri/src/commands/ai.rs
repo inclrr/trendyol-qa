@@ -307,9 +307,11 @@ pub struct TrainResult {
 
 #[tauri::command]
 pub async fn train_ai(
+    app: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
     payload: TrainPayload,
 ) -> AppResult<TrainResult> {
+    use tauri::Emitter;
     if payload.end_date <= payload.start_date {
         return Err(AppError::Validation(
             "Bitiş tarihi başlangıçtan sonra olmalı.".into(),
@@ -318,6 +320,7 @@ pub async fn train_ai(
     let state_arc = state.inner().clone();
     let pairs = fetch_history_for_training(
         &state_arc,
+        &app,
         payload.store_ids.clone(),
         payload.start_date,
         payload.end_date,
@@ -327,6 +330,18 @@ pub async fn train_ai(
     let (provider, api_key, selected_model, base_url) = get_active_provider(&state_arc)?;
     let model = selected_model
         .ok_or_else(|| AppError::Validation("Aktif sağlayıcıda model seçilmemiş.".into()))?;
+
+    let _ = app.emit(
+        "ai-training:progress",
+        serde_json::json!({
+            "storeIdx": 0,
+            "storeTotal": 0,
+            "storeName": "",
+            "pageIdx": 0,
+            "pairsFound": pairs.len(),
+            "phase": "generating",
+        }),
+    );
 
     let training_prompt = build_training_prompt(&pairs);
     let client = build_provider(&provider, base_url, api_key)?;
@@ -348,19 +363,41 @@ pub async fn train_ai(
     let store_ids_json = payload
         .store_ids
         .map(|v| serde_json::to_string(&v).unwrap_or_default());
+    let auto_name = format!(
+        "{} → {}",
+        chrono::DateTime::<Utc>::from_timestamp_millis(payload.start_date)
+            .map(|d| d.format("%d.%m.%Y").to_string())
+            .unwrap_or_default(),
+        chrono::DateTime::<Utc>::from_timestamp_millis(payload.end_date)
+            .map(|d| d.format("%d.%m.%Y").to_string())
+            .unwrap_or_default()
+    );
     conn.execute(
         "INSERT INTO ai_training_runs (start_date, end_date, store_ids, qa_pair_count, \
-         system_prompt, active, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)",
+         system_prompt, active, created_at, name, original_prompt) \
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?5)",
         params![
             payload.start_date,
             payload.end_date,
             store_ids_json,
             pairs.len() as i64,
             summary,
-            now
+            now,
+            auto_name,
         ],
     )?;
     let id = conn.last_insert_rowid();
+    let _ = app.emit(
+        "ai-training:progress",
+        serde_json::json!({
+            "storeIdx": 0,
+            "storeTotal": 0,
+            "storeName": "",
+            "pageIdx": 0,
+            "pairsFound": pairs.len(),
+            "phase": "done",
+        }),
+    );
     Ok(TrainResult {
         training_id: id,
         qa_pair_count: pairs.len() as i64,
@@ -377,6 +414,126 @@ pub struct ActiveTraining {
     pub qa_pair_count: i64,
     pub system_prompt: String,
     pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingRecord {
+    pub id: i64,
+    pub name: Option<String>,
+    pub start_date: i64,
+    pub end_date: i64,
+    pub qa_pair_count: i64,
+    pub system_prompt: String,
+    pub original_prompt: Option<String>,
+    pub active: bool,
+    pub created_at: i64,
+}
+
+#[tauri::command]
+pub async fn list_trainings(state: State<'_, Arc<AppState>>) -> AppResult<Vec<TrainingRecord>> {
+    let conn = state.db.get()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, start_date, end_date, qa_pair_count, system_prompt, original_prompt, active, created_at \
+         FROM ai_training_runs ORDER BY created_at DESC",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(TrainingRecord {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                start_date: r.get(2)?,
+                end_date: r.get(3)?,
+                qa_pair_count: r.get(4)?,
+                system_prompt: r.get(5)?,
+                original_prompt: r.get(6)?,
+                active: r.get::<_, i64>(7)? != 0,
+                created_at: r.get(8)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePromptPayload {
+    #[serde(rename = "trainingId")]
+    pub training_id: i64,
+    #[serde(rename = "systemPrompt")]
+    pub system_prompt: String,
+}
+
+#[tauri::command]
+pub async fn update_training_prompt(
+    state: State<'_, Arc<AppState>>,
+    payload: UpdatePromptPayload,
+) -> AppResult<()> {
+    if payload.system_prompt.trim().is_empty() {
+        return Err(AppError::Validation("Sistem promptu boş olamaz.".into()));
+    }
+    let conn = state.db.get()?;
+    conn.execute(
+        "UPDATE ai_training_runs SET system_prompt = ?1 WHERE id = ?2",
+        params![payload.system_prompt, payload.training_id],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reset_training_prompt(
+    state: State<'_, Arc<AppState>>,
+    training_id: i64,
+) -> AppResult<()> {
+    let conn = state.db.get()?;
+    let original: Option<String> = conn
+        .query_row(
+            "SELECT original_prompt FROM ai_training_runs WHERE id = ?1",
+            params![training_id],
+            |r| r.get(0),
+        )
+        .ok()
+        .flatten();
+    if let Some(orig) = original {
+        conn.execute(
+            "UPDATE ai_training_runs SET system_prompt = ?1 WHERE id = ?2",
+            params![orig, training_id],
+        )?;
+        Ok(())
+    } else {
+        Err(AppError::Validation(
+            "Bu eğitim için orijinal prompt kayıtlı değil (eski sürümde oluşturulmuş olabilir).".into(),
+        ))
+    }
+}
+
+#[tauri::command]
+pub async fn activate_training(
+    state: State<'_, Arc<AppState>>,
+    training_id: i64,
+) -> AppResult<()> {
+    let mut conn = state.db.get()?;
+    let tx = conn.transaction()?;
+    tx.execute("UPDATE ai_training_runs SET active = 0", [])?;
+    tx.execute(
+        "UPDATE ai_training_runs SET active = 1 WHERE id = ?1",
+        params![training_id],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_training(
+    state: State<'_, Arc<AppState>>,
+    training_id: i64,
+) -> AppResult<()> {
+    let conn = state.db.get()?;
+    conn.execute(
+        "DELETE FROM ai_training_runs WHERE id = ?1",
+        params![training_id],
+    )?;
+    Ok(())
 }
 
 #[tauri::command]

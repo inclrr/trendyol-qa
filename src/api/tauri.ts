@@ -97,11 +97,31 @@ export interface ActiveTraining {
   createdAt: number;
 }
 
+export interface TrainingRecord {
+  id: number;
+  name: string | null;
+  startDate: number;
+  endDate: number;
+  qaPairCount: number;
+  systemPrompt: string;
+  originalPrompt: string | null;
+  active: boolean;
+  createdAt: number;
+}
+
 export interface SubmitAnswerResult {
   answerId: number | null;
   questionId: number;
   success: boolean;
   message: string;
+  bannedWord: string | null;
+}
+
+export interface AnswerCheckResult {
+  valid: boolean;
+  charCount: number;
+  bannedWord: string | null;
+  message: string | null;
 }
 
 export const api = {
@@ -144,14 +164,19 @@ export const api = {
   markNotified: (questionIds: number[]) =>
     invoke<void>("mark_notified", { questionIds }),
 
-  submitAnswer: (questionId: number, text: string) =>
+  submitAnswer: (questionId: number, text: string, ignoreBannedWords = false) =>
     invoke<SubmitAnswerResult>("submit_answer", {
-      payload: { questionId, text },
+      payload: { questionId, text, ignoreBannedWords },
     }),
-  submitBulkAnswers: (items: { questionId: number; text: string }[]) =>
+  submitBulkAnswers: (
+    items: { questionId: number; text: string }[],
+    ignoreBannedWords = false
+  ) =>
     invoke<SubmitAnswerResult[]>("submit_bulk_answers", {
-      payload: { items },
+      payload: { items, ignoreBannedWords },
     }),
+  checkAnswer: (text: string) =>
+    invoke<AnswerCheckResult>("check_answer", { text }),
 
   listTemplates: () => invoke<AnswerTemplate[]>("list_templates"),
   upsertTemplate: (template: AnswerTemplate) =>
@@ -184,9 +209,26 @@ export const api = {
       { payload: { startDate, endDate, storeIds: storeIds ?? null } }
     ),
   getActiveTraining: () => invoke<ActiveTraining | null>("get_active_training"),
+  listTrainings: () => invoke<TrainingRecord[]>("list_trainings"),
+  updateTrainingPrompt: (trainingId: number, systemPrompt: string) =>
+    invoke<void>("update_training_prompt", {
+      payload: { trainingId, systemPrompt },
+    }),
+  resetTrainingPrompt: (trainingId: number) =>
+    invoke<void>("reset_training_prompt", { trainingId }),
+  activateTraining: (trainingId: number) =>
+    invoke<void>("activate_training", { trainingId }),
+  deleteTraining: (trainingId: number) =>
+    invoke<void>("delete_training", { trainingId }),
 
   getAllSettings: () => invoke<Record<string, string>>("get_all_settings"),
   getSetting: (key: string) => invoke<string | null>("get_setting", { key }),
   setSetting: (key: string, value: string) =>
     invoke<void>("set_setting", { key, value }),
+
+  backupExport: (destination: string) =>
+    invoke<number>("backup_export", { destination }),
+  backupImport: (source: string) =>
+    invoke<void>("backup_import", { source }),
+  getDbPath: () => invoke<string>("get_db_path"),
 };

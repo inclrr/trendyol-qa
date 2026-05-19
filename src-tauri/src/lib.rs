@@ -1,4 +1,5 @@
 mod ai;
+mod banned;
 mod commands;
 mod db;
 mod errors;
@@ -37,6 +38,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
             let state = AppState::initialize(&app_handle)?;
@@ -57,11 +59,28 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
-                    api.prevent_close();
-                    let _ = window.hide();
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    if window.label() == "main" {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
+                WindowEvent::Focused(true) => {
+                    // Kullanıcı pencereyi öne getirdiğinde bekleyen bildirim soru ID'lerini
+                    // frontend'e ilet → modal otomatik açılır
+                    use tauri::{Emitter, Manager};
+                    if window.label() == "main" {
+                        let app = window.app_handle();
+                        if let Some(state) = app.try_state::<std::sync::Arc<state::AppState>>() {
+                            let ids = state.drain_notifications();
+                            if !ids.is_empty() {
+                                let _ = app.emit("notification:focus", ids);
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -77,6 +96,7 @@ pub fn run() {
             commands::questions::mark_notified,
             commands::answers::submit_answer,
             commands::answers::submit_bulk_answers,
+            commands::answers::check_answer,
             commands::templates::list_templates,
             commands::templates::upsert_template,
             commands::templates::delete_template,
@@ -89,9 +109,17 @@ pub fn run() {
             commands::ai::generate_answer,
             commands::ai::train_ai,
             commands::ai::get_active_training,
+            commands::ai::list_trainings,
+            commands::ai::update_training_prompt,
+            commands::ai::reset_training_prompt,
+            commands::ai::activate_training,
+            commands::ai::delete_training,
             commands::settings::get_setting,
             commands::settings::set_setting,
             commands::settings::get_all_settings,
+            commands::backup::backup_export,
+            commands::backup::backup_import,
+            commands::backup::get_db_path,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri build failed")

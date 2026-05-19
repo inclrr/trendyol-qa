@@ -1,3 +1,4 @@
+use crate::banned;
 use crate::commands::stores::{ensure_client, get_store_by_id};
 use crate::errors::{AppError, AppResult};
 use crate::state::AppState;
@@ -12,6 +13,8 @@ pub struct SubmitAnswerPayload {
     #[serde(rename = "questionId")]
     pub question_id: i64,
     pub text: String,
+    #[serde(default, rename = "ignoreBannedWords")]
+    pub ignore_banned_words: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -21,6 +24,7 @@ pub struct SubmitAnswerResult {
     pub question_id: i64,
     pub success: bool,
     pub message: String,
+    pub banned_word: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,6 +37,17 @@ pub struct BulkAnswerItem {
 #[derive(Debug, Deserialize)]
 pub struct SubmitBulkPayload {
     pub items: Vec<BulkAnswerItem>,
+    #[serde(default, rename = "ignoreBannedWords")]
+    pub ignore_banned_words: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnswerCheckResult {
+    pub valid: bool,
+    pub char_count: usize,
+    pub banned_word: Option<String>,
+    pub message: Option<String>,
 }
 
 pub fn validate_answer_text(text: &str) -> AppResult<()> {
@@ -54,11 +69,48 @@ pub fn validate_answer_text(text: &str) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub async fn check_answer(text: String) -> AppResult<AnswerCheckResult> {
+    let char_count = text.chars().count();
+    if let Err(e) = validate_answer_text(&text) {
+        return Ok(AnswerCheckResult {
+            valid: false,
+            char_count,
+            banned_word: None,
+            message: Some(e.to_string()),
+        });
+    }
+    let banned = banned::find_banned_word(&text);
+    Ok(AnswerCheckResult {
+        valid: banned.is_none(),
+        char_count,
+        message: banned.as_ref().map(|w| {
+            format!("Cevabınızda '\u{2018}{}\u{2019}' kelimesi tespit edildi — Trendyol bunu reddedebilir.", w)
+        }),
+        banned_word: banned,
+    })
+}
+
+#[tauri::command]
 pub async fn submit_answer(
     state: State<'_, Arc<AppState>>,
     payload: SubmitAnswerPayload,
 ) -> AppResult<SubmitAnswerResult> {
     validate_answer_text(&payload.text)?;
+    if !payload.ignore_banned_words {
+        if let Some(word) = banned::find_banned_word(&payload.text) {
+            return Ok(SubmitAnswerResult {
+                answer_id: None,
+                question_id: payload.question_id,
+                success: false,
+                message: format!(
+                    "Cevabınızda yasaklı/şüpheli kelime tespit edildi: '{}'. Onaylarsanız yine de gönderebilirsiniz.",
+                    word
+                ),
+                banned_word: Some(word),
+            });
+        }
+    }
+
     let state_arc = state.inner().clone();
     let store_id = {
         let conn = state_arc.db.get()?;
@@ -75,28 +127,31 @@ pub async fn submit_answer(
 
     // Lokal kayda işle
     let now = Utc::now().timestamp_millis();
-    let conn = state_arc.db.get()?;
-    conn.execute(
+    let mut conn = state_arc.db.get()?;
+    let tx = conn.transaction()?;
+    tx.execute(
         "UPDATE questions SET status = 'ANSWERED', answer_id = ?1, answer_text = ?2, \
          answer_creation_date = ?3 WHERE question_id = ?4",
         params![resp.answer_id, payload.text, now, payload.question_id],
     )?;
     // RAG indeksine ekle (önce duplikasyonu engellemek için sil)
-    let _ = conn.execute(
+    let _ = tx.execute(
         "DELETE FROM qa_index WHERE question_id = ?1",
         params![payload.question_id],
     );
-    let _ = conn.execute(
+    let _ = tx.execute(
         "INSERT INTO qa_index(question_text, answer_text, store_id, question_id) \
          SELECT text, ?1, store_id, question_id FROM questions WHERE question_id = ?2",
         params![payload.text, payload.question_id],
     );
+    tx.commit()?;
 
     Ok(SubmitAnswerResult {
         answer_id: resp.answer_id,
         question_id: payload.question_id,
         success: true,
         message: "Cevap başarıyla gönderildi.".into(),
+        banned_word: None,
     })
 }
 
@@ -110,6 +165,7 @@ pub async fn submit_bulk_answers(
         let single = SubmitAnswerPayload {
             question_id: item.question_id,
             text: item.text.clone(),
+            ignore_banned_words: payload.ignore_banned_words,
         };
         match submit_answer(state.clone(), single).await {
             Ok(r) => results.push(r),
@@ -118,6 +174,7 @@ pub async fn submit_bulk_answers(
                 question_id: item.question_id,
                 success: false,
                 message: e.to_string(),
+                banned_word: None,
             }),
         }
     }

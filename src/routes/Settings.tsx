@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { getVersion } from "@tauri-apps/api/app";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { api } from "../api/tauri";
 import { useUpdaterStore } from "../stores/useUpdaterStore";
 import { RefreshCw } from "../components/icons";
@@ -13,6 +15,9 @@ export default function Settings() {
   const [autostart, setAutostart] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [version, setVersion] = useState<string>("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const [backupErr, setBackupErr] = useState<string | null>(null);
   const {
     checking,
     available,
@@ -56,6 +61,60 @@ export default function Settings() {
     }
     setSavedMsg(t("settings.saved"));
     setTimeout(() => setSavedMsg(null), 2500);
+  }
+
+  async function handleBackupExport() {
+    setBackupErr(null);
+    setBackupMsg(null);
+    try {
+      const stamp = new Date()
+        .toISOString()
+        .replace(/[:T]/g, "-")
+        .slice(0, 16);
+      const path = await saveDialog({
+        defaultPath: `trendyol-qa-yedek-${stamp}.sqlite`,
+        filters: [{ name: "SQLite", extensions: ["sqlite", "db"] }],
+      });
+      if (!path) return;
+      setBackupBusy(true);
+      const size = await api.backupExport(path);
+      setBackupMsg(
+        t("settings.backupSuccess", { size: Math.round(size / 1024) })
+      );
+    } catch (e: any) {
+      setBackupErr(String(e));
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  async function handleBackupImport() {
+    setBackupErr(null);
+    setBackupMsg(null);
+    try {
+      const path = await openDialog({
+        multiple: false,
+        filters: [{ name: "SQLite", extensions: ["sqlite", "db"] }],
+      });
+      if (!path || Array.isArray(path)) return;
+      if (
+        !confirm(
+          "Mevcut verileriniz silinip yedek geri yüklenecek. Devam etmek istiyor musunuz?"
+        )
+      )
+        return;
+      setBackupBusy(true);
+      await api.backupImport(path);
+      setBackupMsg(t("settings.restoreSuccess"));
+      // Pool eski DB'ye bağlı olduğu için restart şart
+      setTimeout(() => {
+        relaunch().catch(() => {});
+      }, 1500);
+    } catch (e: any) {
+      setBackupErr(String(e));
+    } finally {
+      setBackupBusy(false);
+    }
   }
 
   function formatLastChecked() {
@@ -157,6 +216,39 @@ export default function Settings() {
             </span>
           </div>
         </div>
+      </section>
+
+      <section className="card space-y-3">
+        <h3 className="text-sm font-semibold text-muted">
+          {t("settings.backup")}
+        </h3>
+        <p className="text-xs text-muted">{t("settings.backupHint")}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleBackupExport}
+            disabled={backupBusy}
+            className="btn-secondary"
+          >
+            {t("settings.backupExport")}
+          </button>
+          <button
+            onClick={handleBackupImport}
+            disabled={backupBusy}
+            className="btn-secondary"
+          >
+            {t("settings.backupImport")}
+          </button>
+        </div>
+        {backupMsg && (
+          <div className="rounded-lg bg-success/10 p-2 text-xs text-success">
+            {backupMsg}
+          </div>
+        )}
+        {backupErr && (
+          <div className="rounded-lg bg-danger/10 p-2 text-xs text-danger">
+            {backupErr}
+          </div>
+        )}
       </section>
 
       <section className="card space-y-3">

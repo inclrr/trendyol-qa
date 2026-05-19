@@ -14,7 +14,6 @@ pub fn create_pool(db_path: &Path) -> AppResult<DbPool> {
     }
 
     // WAL modunu ilk kez ayarlamak için tek bir geçici bağlantı kullan
-    // (havuzdaki paralel bağlantıların eşzamanlı PRAGMA çağrısı kilit yaratıyor)
     {
         let conn = rusqlite::Connection::open(db_path)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
@@ -33,17 +32,16 @@ pub fn create_pool(db_path: &Path) -> AppResult<DbPool> {
         .max_size(4)
         .build(manager)
         .map_err(|e| AppError::Db(e.to_string()))?;
-    run_migrations(&pool.get()?)?;
+    run_migrations(&mut pool.get()?)?;
     Ok(pool)
 }
 
-fn run_migrations(conn: &DbConn) -> AppResult<()> {
-    conn.execute_batch(
+/// Migrationlar (versiyon, SQL bloğu). Her migration tek bir transaction içinde uygulanır.
+/// Yeni migration eklerken sona ekle, asla mevcut olanı değiştirme.
+const MIGRATIONS: &[(i64, &str)] = &[
+    (
+        1,
         r#"
-        CREATE TABLE IF NOT EXISTS schema_version (
-            version INTEGER NOT NULL PRIMARY KEY
-        );
-
         CREATE TABLE IF NOT EXISTS stores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -128,7 +126,46 @@ fn run_migrations(conn: &DbConn) -> AppResult<()> {
             value TEXT NOT NULL
         );
         "#,
+    ),
+    (
+        2,
+        // v2: training_runs için orijinal prompt ve isim alanı, ayrıca name TEXT
+        r#"
+        ALTER TABLE ai_training_runs ADD COLUMN name TEXT;
+        ALTER TABLE ai_training_runs ADD COLUMN original_prompt TEXT;
+        "#,
+    ),
+];
+
+fn run_migrations(conn: &mut DbConn) -> AppResult<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER NOT NULL PRIMARY KEY,
+            applied_at INTEGER NOT NULL
+        );",
     )?;
+
+    let current: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    for (version, sql) in MIGRATIONS {
+        if *version <= current {
+            continue;
+        }
+        let tx = conn.transaction()?;
+        tx.execute_batch(sql)?;
+        tx.execute(
+            "INSERT INTO schema_version (version, applied_at) VALUES (?1, ?2)",
+            params![*version, chrono::Utc::now().timestamp_millis()],
+        )?;
+        tx.commit()?;
+        log::info!("Schema migration v{} uygulandı.", version);
+    }
 
     seed_defaults(conn)?;
     Ok(())

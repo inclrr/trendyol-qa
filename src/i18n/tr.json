@@ -14,7 +14,8 @@
     "refresh": "Yenile",
     "openDetail": "Detayı Aç",
     "tryAgain": "Tekrar Dene",
-    "back": "Geri"
+    "back": "Geri",
+    "anonymous": "Anonim Müşteri"
   },
   "nav": {
     "inbox": "Gelen Sorular",
@@ -40,7 +41,11 @@
     "testFailed": "Bağlantı başarısız",
     "deleteConfirm": "Bu mağazayı silmek istediğinize emin misiniz? API kimlik bilgileri de silinecektir.",
     "leaveBlank": "Değiştirmek istemiyorsanız boş bırakın",
-    "noStores": "Henüz mağaza eklenmedi. Yeni Mağaza tuşu ile başlayın."
+    "noStores": "Henüz mağaza eklenmedi. Yeni Mağaza tuşu ile başlayın.",
+    "statusActive": "Aktif",
+    "statusInactive": "Pasif",
+    "envShortProd": "Canlı",
+    "envShortStage": "Test"
   },
   "inbox": {
     "title": "Gelen Sorular",
@@ -72,7 +77,8 @@
     },
     "from": "Başlangıç",
     "to": "Bitiş",
-    "notificationsAll": "Bekleyen Sorulara Git"
+    "notificationsAll": "Bekleyen Sorulara Git",
+    "errorsLabel": "Hatalar"
   },
   "question": {
     "askedAt": "Soruldu",
@@ -93,7 +99,12 @@
     "characterCount": "{{count}}/2000 karakter (min 10)",
     "answeredAlready": "Bu soru zaten cevaplanmış.",
     "cannotAnswer": "Bu statüdeki sorular cevaplanamaz.",
-    "openOnTrendyol": "Trendyol'da Aç"
+    "openOnTrendyol": "Trendyol'da Aç",
+    "existingAnswer": "Mevcut Cevap",
+    "previousQAFull": "Bu müşterinin {{count}} önceki soru-cevabı var — Tam sohbete git",
+    "bannedWordWarning": "Cevabınızda yasaklı/şüpheli kelime tespit edildi",
+    "sendAnyway": "Yine de gönder",
+    "shortcutHint": "Ctrl+Enter ile gönder"
   },
   "templates": {
     "title": "Hazır Cevap Şablonları",
@@ -128,7 +139,16 @@
     "trainSuccess": "Eğitim tamamlandı! {{count}} soru-cevap çifti kullanıldı.",
     "activeTraining": "Aktif Eğitim",
     "activeTrainingNone": "Henüz aktif bir eğitim yok.",
-    "systemPrompt": "Üretilen Sistem Promptu"
+    "systemPrompt": "Üretilen Sistem Promptu",
+    "deleteProviderConfirm": "Bu sağlayıcıyı silmek istediğinize emin misiniz?",
+    "keyHintReplace": "Değiştirmek için yeni key'i yazıp Kaydet'e basın",
+    "savedKeyLabel": "Kayıtlı",
+    "trainingHistory": "Eğitim Geçmişi",
+    "activate": "Aktifleştir",
+    "editPrompt": "Promptu Düzenle",
+    "savePromptEdits": "Düzenlemeyi Kaydet",
+    "resetPrompt": "Sıfırla (orijinale dön)",
+    "noTrainings": "Hiç eğitim yapılmamış."
   },
   "bulk": {
     "title": "Toplu Cevap",
@@ -142,7 +162,10 @@
     "skipped": "Atlandı",
     "failed": "Başarısız",
     "success": "Başarılı",
-    "selectTemplate": "Şablon Seç"
+    "selectTemplate": "Şablon Seç",
+    "applyToAll": "Tümüne Uygula",
+    "aiNote": "Her soru için ayrı AI çağrısı yapılır. Eğitim verisi ve müşteri sohbet geçmişi otomatik kullanılır.",
+    "cannotAnswerStatus": "Cevaplanamaz statü"
   },
   "settings": {
     "title": "Ayarlar",
@@ -172,7 +195,13 @@
     "downloadAndInstall": "İndir ve Kur",
     "downloading": "İndiriliyor… {{progress}}%",
     "lastChecked": "Son kontrol",
-    "neverChecked": "Henüz kontrol edilmedi"
+    "neverChecked": "Henüz kontrol edilmedi",
+    "backup": "Yedekleme",
+    "backupExport": "Yedek Al",
+    "backupImport": "Yedeği Geri Yükle",
+    "backupHint": "Tüm mağazalar, sorular, şablonlar, AI eğitimleri ve ayarlar tek bir .sqlite dosyasına alınır. API key'leri Windows Credential Manager'da kalır; yedekte yer almaz.",
+    "backupSuccess": "Yedek alındı: {{size}} KB",
+    "restoreSuccess": "Yedek geri yüklendi. Uygulamayı yeniden başlatın."
   },
   "errors": {
     "generic": "Bir hata oluştu",

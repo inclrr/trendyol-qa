@@ -25,13 +25,31 @@ export default function Templates() {
     refresh();
   }, []);
 
+  const [error, setError] = useState<string | null>(null);
+
   async function save() {
     if (!editing) return;
+    if (editing.title.trim() === "") {
+      setError("Şablon başlığı boş olamaz.");
+      return;
+    }
+    if (editing.body.trim().length < 10) {
+      setError("Şablon içeriği en az 10 karakter olmalı.");
+      return;
+    }
+    setError(null);
     setBusy(true);
     try {
-      await api.upsertTemplate(editing);
+      await api.upsertTemplate({
+        ...editing,
+        title: editing.title.trim(),
+        body: editing.body.trim(),
+        category: editing.category?.trim() || null,
+      });
       await refresh();
       setEditing(null);
+    } catch (e: any) {
+      setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -132,6 +150,9 @@ export default function Templates() {
                 }
               />
             </div>
+            {error && (
+              <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</div>
+            )}
             <div className="flex justify-end gap-2">
               <button onClick={() => setEditing(null)} className="btn-ghost">
                 {t("app.cancel")}

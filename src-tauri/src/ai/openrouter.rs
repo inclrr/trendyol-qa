@@ -37,6 +37,25 @@ impl OpenRouterClient {
         h.insert("X-Title", HeaderValue::from_static("Trendyol QA"));
         Ok(h)
     }
+
+    fn map_error(status: reqwest::StatusCode, body: String) -> AppError {
+        let code = status.as_u16();
+        match code {
+            401 | 403 => AppError::Ai("OpenRouter API key geçersiz veya yetkisiz.".into()),
+            402 => AppError::Ai(
+                "OpenRouter kredinizin tükendi. Hesabınıza kredi yükleyin veya farklı sağlayıcı seçin."
+                    .into(),
+            ),
+            429 => AppError::Ai(
+                "OpenRouter rate limit aşıldı. Birkaç dakika bekleyip tekrar deneyin.".into(),
+            ),
+            500..=599 => AppError::Ai(format!(
+                "OpenRouter sunucu hatası ({}). Lütfen tekrar deneyin.",
+                code
+            )),
+            _ => AppError::Ai(format!("OpenRouter hata {}: {}", code, body)),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,11 +93,9 @@ impl AiProvider for OpenRouterClient {
         let url = format!("{}/models", self.base_url);
         let resp = self.http.get(&url).headers(self.headers()?).send().await?;
         if !resp.status().is_success() {
-            return Err(AppError::Ai(format!(
-                "OpenRouter models {}: {}",
-                resp.status(),
-                resp.text().await.unwrap_or_default()
-            )));
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(Self::map_error(status, body));
         }
         let parsed: ModelsResp = resp.json().await.map_err(|e| AppError::Ai(e.to_string()))?;
         Ok(parsed
@@ -120,11 +137,8 @@ impl AiProvider for OpenRouterClient {
             .await?;
         let status = resp.status();
         if !status.is_success() {
-            return Err(AppError::Ai(format!(
-                "OpenRouter generate {}: {}",
-                status,
-                resp.text().await.unwrap_or_default()
-            )));
+            let body = resp.text().await.unwrap_or_default();
+            return Err(Self::map_error(status, body));
         }
         let json: Value = resp.json().await.map_err(|e| AppError::Ai(e.to_string()))?;
         let text = json

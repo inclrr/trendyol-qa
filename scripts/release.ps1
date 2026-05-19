@@ -29,7 +29,43 @@ if (-not (Test-Path $KeyPath)) {
     exit 1
 }
 
-Write-Host "→ Sürüm $Version güncelleniyor..." -ForegroundColor Cyan
+# Semver basit doğrulama
+if ($Version -notmatch '^\d+\.\d+\.\d+(-[\w\.]+)?$') {
+    Write-Error "Geçersiz sürüm formatı: $Version (örn: 0.3.0)"
+    exit 1
+}
+
+# Mevcut sürümden büyük olduğunu kontrol et
+$currentVersion = (Get-Content "package.json" -Raw | ConvertFrom-Json).version
+function Compare-SemVer($a, $b) {
+    $av = ($a -split '-')[0].Split('.') | ForEach-Object { [int]$_ }
+    $bv = ($b -split '-')[0].Split('.') | ForEach-Object { [int]$_ }
+    for ($i = 0; $i -lt 3; $i++) {
+        if ($av[$i] -ne $bv[$i]) { return $av[$i] - $bv[$i] }
+    }
+    return 0
+}
+if ((Compare-SemVer $Version $currentVersion) -le 0) {
+    Write-Error "Yeni sürüm ($Version) mevcut sürümden ($currentVersion) büyük olmalı."
+    exit 1
+}
+
+Write-Host "→ Sürüm $currentVersion → $Version güncelleniyor..." -ForegroundColor Cyan
+
+# Eski release dosyalarını temizle
+$releaseDir = Join-Path $root "release"
+if (Test-Path $releaseDir) {
+    Get-ChildItem $releaseDir -File | ForEach-Object { Remove-Item $_.FullName -Force }
+}
+
+# Eski bundle sürümlerini de temizle (bundle dizininde sadece yeni sürüm kalsın)
+$nsisDirAbs = Join-Path $root "src-tauri\target\release\bundle\nsis"
+if (Test-Path $nsisDirAbs) {
+    Get-ChildItem $nsisDirAbs -File | Where-Object { $_.Name -notlike "*_${Version}_*" } | ForEach-Object {
+        Write-Host "  Eski bundle dosyası siliniyor: $($_.Name)" -ForegroundColor DarkGray
+        Remove-Item $_.FullName -Force
+    }
+}
 
 # package.json
 $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json

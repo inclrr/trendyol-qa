@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { StoredQuestion } from "../api/tauri";
 import { formatRelativeTime, statusColor, statusLabel } from "../lib/format";
 import ImageLightbox from "./ImageLightbox";
@@ -19,6 +20,7 @@ export default function QuestionCard({
   onOpen,
   historyCount,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <div
       className={`card cursor-pointer transition hover:border-brand/40 ${
@@ -51,7 +53,7 @@ export default function QuestionCard({
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-2">
             <span className="text-sm font-semibold">
-              {question.customerName || "Anonim Müşteri"}
+              {question.customerName || t("app.anonymous")}
             </span>
             <span className={`badge ${statusColor(question.status)}`}>
               {statusLabel(question.status)}
