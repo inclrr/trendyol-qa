@@ -1,6 +1,6 @@
 [package]
 name = "trendyol-qa"
-version = "0.3.2"
+version = "0.4.0"
 description = "Trendyol Soru-Cevap Yönetim Uygulaması"
 authors = ["you"]
 edition = "2021"
@@ -29,7 +29,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 rusqlite = { version = "0.32", features = ["bundled"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.25"
-keyring = { version = "3.6", features = ["windows-native"] }
+keyring = { version = "3.6", features = ["windows-native", "apple-native"] }
 base64 = "0.22"
 governor = "0.7"
 chrono = { version = "0.4", features = ["serde"] }
