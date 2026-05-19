@@ -38,11 +38,18 @@ pub fn build_training_prompt(qa_pairs: &[(String, String)]) -> String {
         doğrudan kullanılabilir prompt metnini ver.\n\n\
         GEÇMİŞ CEVAP ÖRNEKLERİ:\n",
     );
-    let limit = qa_pairs.len().min(80);
+    // Prompt token bütçesi: Gemini Pro 32k context. Ortalama Q+A = ~400-600 char.
+    // 200 pair × 500 char ≈ 100k char ≈ 25k token. Output için 4k bırakırsak güvenli.
+    let limit = qa_pairs.len().min(200);
     for (i, (q, a)) in qa_pairs.iter().take(limit).enumerate() {
         buf.push_str(&format!("\n[{}] SORU: {}\n    CEVAP: {}\n", i + 1, q, a));
     }
     buf
+}
+
+/// Eğitim için seçilecek pair sayısını döndürür (toplam pair sayısına göre).
+pub fn training_pair_limit(total: usize) -> usize {
+    total.min(200)
 }
 
 pub fn build_answer_prompt(

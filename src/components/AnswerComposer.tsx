@@ -79,8 +79,8 @@ export default function AnswerComposer({
     const tpl = templates.find((t) => t.id === id);
     if (!tpl) return;
     const filled = applyTemplateVariables(tpl.body, {
-      musteri: customerName || "değerli müşterimiz",
-      urun: productName || "ürünümüz",
+      musteri: customerName || t("app.defaultCustomerTitle"),
+      urun: productName || t("app.defaultProductTitle"),
       magaza: storeName || "",
       tarih: new Date().toLocaleDateString("tr-TR"),
     });
@@ -184,9 +184,7 @@ export default function AnswerComposer({
               </option>
             ))}
           </select>
-          <p className="mt-1 text-[10px] text-muted">
-            Şablonda {"{{musteri}}, {{urun}}, {{magaza}}, {{tarih}}"} değişkenleri otomatik dolar.
-          </p>
+          <p className="mt-1 text-[10px] text-muted">{t("question.templateVarsHint")}</p>
         </div>
       )}
 
@@ -206,10 +204,11 @@ export default function AnswerComposer({
       <textarea
         rows={6}
         className="input resize-y"
-        placeholder="Cevap metnini yazın…"
+        placeholder={t("question.placeholder")}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKey}
+        disabled={generating || busy}
         title={t("question.shortcutHint")}
       />
       <div className="flex items-center justify-between text-xs">
@@ -232,9 +231,7 @@ export default function AnswerComposer({
           <p className="font-semibold text-warning">
             ⚠️ {t("question.bannedWordWarning")}: <span className="font-mono">{bannedWord}</span>
           </p>
-          <p className="mt-1 text-xs text-muted">
-            Trendyol bu kelimeyi reddedip soruyu kapatabilir. Yine de göndermek istiyorsanız onaylayın.
-          </p>
+          <p className="mt-1 text-xs text-muted">{t("question.bannedExtraInfo")}</p>
           <button onClick={() => send(true)} disabled={busy} className="btn-danger mt-2">
             {t("question.sendAnyway")}
           </button>

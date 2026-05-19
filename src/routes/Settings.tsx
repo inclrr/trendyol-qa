@@ -18,6 +18,7 @@ export default function Settings() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [backupErr, setBackupErr] = useState<string | null>(null);
+  const [restartCountdown, setRestartCountdown] = useState<number | null>(null);
   const {
     checking,
     available,
@@ -97,19 +98,21 @@ export default function Settings() {
         filters: [{ name: "SQLite", extensions: ["sqlite", "db"] }],
       });
       if (!path || Array.isArray(path)) return;
-      if (
-        !confirm(
-          "Mevcut verileriniz silinip yedek geri yüklenecek. Devam etmek istiyor musunuz?"
-        )
-      )
-        return;
+      if (!confirm(t("settings.restoreConfirm"))) return;
       setBackupBusy(true);
       await api.backupImport(path);
       setBackupMsg(t("settings.restoreSuccess"));
-      // Pool eski DB'ye bağlı olduğu için restart şart
-      setTimeout(() => {
-        relaunch().catch(() => {});
-      }, 1500);
+      // Pool eski DB'ye bağlı olduğu için restart şart. Geri sayım göster.
+      let secs = 5;
+      setRestartCountdown(secs);
+      const interval = window.setInterval(() => {
+        secs -= 1;
+        setRestartCountdown(secs);
+        if (secs <= 0) {
+          window.clearInterval(interval);
+          relaunch().catch(() => {});
+        }
+      }, 1000);
     } catch (e: any) {
       setBackupErr(String(e));
     } finally {
@@ -242,6 +245,11 @@ export default function Settings() {
         {backupMsg && (
           <div className="rounded-lg bg-success/10 p-2 text-xs text-success">
             {backupMsg}
+            {restartCountdown !== null && restartCountdown > 0 && (
+              <span className="ml-2 font-semibold">
+                {t("settings.restartingIn", { secs: restartCountdown })}
+              </span>
+            )}
           </div>
         )}
         {backupErr && (

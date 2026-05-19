@@ -15,7 +15,10 @@
     "openDetail": "Detayı Aç",
     "tryAgain": "Tekrar Dene",
     "back": "Geri",
-    "anonymous": "Anonim Müşteri"
+    "anonymous": "Anonim Müşteri",
+    "notFound": "Soru bulunamadı.",
+    "defaultCustomerTitle": "değerli müşterimiz",
+    "defaultProductTitle": "ürünümüz"
   },
   "nav": {
     "inbox": "Gelen Sorular",
@@ -78,7 +81,8 @@
     "from": "Başlangıç",
     "to": "Bitiş",
     "notificationsAll": "Bekleyen Sorulara Git",
-    "errorsLabel": "Hatalar"
+    "errorsLabel": "Hatalar",
+    "dateRangeInvalid": "Başlangıç tarihi bitiş tarihinden sonra olamaz."
   },
   "question": {
     "askedAt": "Soruldu",
@@ -104,7 +108,10 @@
     "previousQAFull": "Bu müşterinin {{count}} önceki soru-cevabı var — Tam sohbete git",
     "bannedWordWarning": "Cevabınızda yasaklı/şüpheli kelime tespit edildi",
     "sendAnyway": "Yine de gönder",
-    "shortcutHint": "Ctrl+Enter ile gönder"
+    "shortcutHint": "Ctrl+Enter ile gönder",
+    "placeholder": "Cevap metnini yazın…",
+    "templateVarsHint": "Şablonda {{musteri}}, {{urun}}, {{magaza}}, {{tarih}} değişkenleri otomatik dolar.",
+    "bannedExtraInfo": "Trendyol bu kelimeyi reddedip soruyu kapatabilir. Yine de göndermek istiyorsanız onaylayın."
   },
   "templates": {
     "title": "Hazır Cevap Şablonları",
@@ -141,6 +148,8 @@
     "activeTrainingNone": "Henüz aktif bir eğitim yok.",
     "systemPrompt": "Üretilen Sistem Promptu",
     "deleteProviderConfirm": "Bu sağlayıcıyı silmek istediğinize emin misiniz?",
+    "deleteTrainingConfirm": "Bu eğitim kaydını silmek istediğinize emin misiniz?",
+    "trainingDateRangeInvalid": "Bitiş tarihi başlangıç tarihinden sonra olmalı.",
     "keyHintReplace": "Değiştirmek için yeni key'i yazıp Kaydet'e basın",
     "savedKeyLabel": "Kayıtlı",
     "trainingHistory": "Eğitim Geçmişi",
@@ -201,7 +210,9 @@
     "backupImport": "Yedeği Geri Yükle",
     "backupHint": "Tüm mağazalar, sorular, şablonlar, AI eğitimleri ve ayarlar tek bir .sqlite dosyasına alınır. API key'leri Windows Credential Manager'da kalır; yedekte yer almaz.",
     "backupSuccess": "Yedek alındı: {{size}} KB",
-    "restoreSuccess": "Yedek geri yüklendi. Uygulamayı yeniden başlatın."
+    "restoreSuccess": "Yedek geri yüklendi.",
+    "restoreConfirm": "Mevcut verileriniz silinip yedek geri yüklenecek. Devam etmek istiyor musunuz?",
+    "restartingIn": "{{secs}} saniye içinde yeniden başlatılıyor…"
   },
   "errors": {
     "generic": "Bir hata oluştu",

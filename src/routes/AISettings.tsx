@@ -193,7 +193,7 @@ export default function AISettings() {
   }
 
   async function deleteTraining(id: number) {
-    if (!confirm("Bu eğitim kaydını silmek istediğinize emin misiniz?")) return;
+    if (!confirm(t("ai.deleteTrainingConfirm"))) return;
     await api.deleteTraining(id);
     await refresh();
   }

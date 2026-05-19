@@ -204,10 +204,14 @@ export const api = {
       payload: { questionId, modelOverride: modelOverride ?? null },
     }),
   trainAi: (startDate: number, endDate: number, storeIds?: number[] | null) =>
-    invoke<{ trainingId: number; qaPairCount: number; systemPrompt: string }>(
-      "train_ai",
-      { payload: { startDate, endDate, storeIds: storeIds ?? null } }
-    ),
+    invoke<{
+      trainingId: number;
+      qaPairCount: number;
+      pairsUsed: number;
+      systemPrompt: string;
+    }>("train_ai", {
+      payload: { startDate, endDate, storeIds: storeIds ?? null },
+    }),
   getActiveTraining: () => invoke<ActiveTraining | null>("get_active_training"),
   listTrainings: () => invoke<TrainingRecord[]>("list_trainings"),
   updateTrainingPrompt: (trainingId: number, systemPrompt: string) =>

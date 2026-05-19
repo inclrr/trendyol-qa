@@ -30,6 +30,14 @@ export default function QuestionModal({ question, onClose, onSent }: Props) {
     }
   }, [question.questionId, question.customerId, question.storeId]);
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"

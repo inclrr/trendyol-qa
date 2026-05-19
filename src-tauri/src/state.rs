@@ -25,15 +25,18 @@ impl AppState {
         Ok(Self {
             db,
             clients: Mutex::new(HashMap::new()),
-            recent_notifications: Mutex::new(VecDeque::with_capacity(16)),
+            recent_notifications: Mutex::new(VecDeque::with_capacity(128)),
         })
     }
 
     pub fn push_notification(&self, question_id: i64) {
         let mut q = self.recent_notifications.lock();
-        q.push_back(question_id);
-        while q.len() > 10 {
-            q.pop_front();
+        // Aynı ID'yi tekrar eklemekten kaçın
+        if !q.iter().any(|x| *x == question_id) {
+            q.push_back(question_id);
+            while q.len() > 100 {
+                q.pop_front();
+            }
         }
     }
 

@@ -52,6 +52,8 @@ export default function Inbox() {
     };
   }
 
+  const dateRangeInvalid = new Date(fromDate).getTime() > new Date(toDate).getTime();
+
   async function load() {
     const gen = ++loadGenRef.current;
     setLoading(true);
@@ -242,6 +244,12 @@ export default function Inbox() {
         </button>
       </div>
 
+      {dateRangeInvalid && (
+        <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-2 text-sm text-warning">
+          {t("inbox.dateRangeInvalid")}
+        </div>
+      )}
+
       {syncMsg && (
         <div className="rounded-lg border border-border bg-bg-elev px-4 py-2 text-sm">
           {syncMsg}
@@ -281,6 +289,12 @@ export default function Inbox() {
           question={modalQuestion}
           onClose={() => setModalQuestion(null)}
           onSent={() => {
+            // Cevaplanan soruyu selected'tan çıkar (artık WAITING değil)
+            setSelected((prev) => {
+              const next = new Set(prev);
+              next.delete(modalQuestion.questionId);
+              return next;
+            });
             sync(true);
             load();
           }}

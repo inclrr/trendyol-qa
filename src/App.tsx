@@ -40,7 +40,8 @@ export default function App() {
     };
     media.addEventListener("change", handler);
     return () => media.removeEventListener("change", handler);
-  }, [setTheme, setStores, setPendingCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     applyTheme(theme);

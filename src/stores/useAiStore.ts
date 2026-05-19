@@ -64,9 +64,14 @@ export const useAiStore = create<AiState>((set, get) => ({
     });
     try {
       const res = await api.trainAi(startDate, endDate, storeIds);
+      let msg = `Eğitim tamamlandı! ${res.qaPairCount} soru-cevap bulundu`;
+      if (res.pairsUsed < res.qaPairCount) {
+        msg += `, AI'ya en yeni ${res.pairsUsed} tanesi gönderildi`;
+      }
+      msg += ".";
       set({
         training: false,
-        trainMsg: `Eğitim tamamlandı! ${res.qaPairCount} soru-cevap çifti kullanıldı.`,
+        trainMsg: msg,
         trainErr: null,
         trainProgressLabel: null,
       });

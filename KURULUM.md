@@ -1,21 +1,28 @@
 # Setup / Dağıtım Rehberi
 
-## Hızlı Yol: Tek Komut
+## En Kolay: GitHub Release (Önerilen)
+
+Otomatik build sistemi sayesinde her `git push --tags` ile GitHub Actions release üretir. Hem Windows hem macOS Apple Silicon için dosyalar otomatik hazırlanır.
+
+**Kullanıcı tarafı**: https://github.com/inclrr/trendyol-qa/releases/latest sayfasından platformuna uygun dosyayı indirir.
+
+| Platform | Dosya | Boyut |
+|---|---|---|
+| **Windows 10/11** | `Trendyol.Soru-Cevap_X.Y.Z_x64-setup.exe` | ~5 MB |
+| **macOS Apple Silicon (M1/M2/M3/M4)** | `Trendyol.Soru-Cevap_X.Y.Z_aarch64.dmg` | ~7 MB |
+
+## Lokal Build (Geliştirici)
 
 ```powershell
 $env:Path += ";$env:USERPROFILE\.cargo\bin"
 npm run tauri build
 ```
 
-Build tamamlanınca aşağıdaki konumlarda kurulum dosyaları oluşur:
-
-| Tür | Konum | Kullanım |
-|---|---|---|
-| **NSIS exe** | `src-tauri\target\release\bundle\nsis\Trendyol Soru-Cevap_0.1.0_x64-setup.exe` | Önerilen — tek tıkla kurulum, WebView2 dahil |
-| **MSI** | `src-tauri\target\release\bundle\msi\Trendyol Soru-Cevap_0.1.0_x64_en-US.msi` | Kurumsal dağıtım (GPO vs.) |
-| **Portable exe** | `src-tauri\target\release\trendyol-qa.exe` | Kurulum yapmadan çalıştırılabilir tek dosya |
-
-Bunlardan **birini** (önerilen NSIS) başka bir bilgisayara kopyalayıp çalıştırmak yeterli.
+Çıktı: `src-tauri\target\release\bundle\` altında:
+- **NSIS exe**: `nsis\Trendyol Soru-Cevap_X.Y.Z_x64-setup.exe`
+- **MSI**: `msi\Trendyol Soru-Cevap_X.Y.Z_x64_en-US.msi`
+- **macOS DMG** (Mac'te build alıyorsan): `dmg\Trendyol Soru-Cevap_X.Y.Z_aarch64.dmg`
+- **Portable**: `target\release\trendyol-qa.exe`
 
 ## Kurulum İşlemi
 
@@ -25,6 +32,25 @@ Kullanıcı kurulum dosyasına çift tıklayınca:
 2. **Program Files'a kurulum** — `C:\Program Files\Trendyol Soru-Cevap\`
 3. **Başlat menüsü kısayolu** + **Masaüstü kısayolu** (NSIS bunları otomatik ekler)
 4. **Kaldırma desteği** — Windows Ayarlar → Uygulamalar listesinde görünür
+
+## macOS Kurulum (Apple Silicon)
+
+1. `.dmg` dosyasını indir
+2. **Çift tıkla** → Finder'da yeni pencere açılır
+3. **`Trendyol Soru-Cevap.app`'i `Applications` klasörüne sürükle bırak**
+4. DMG penceresini **Eject** ile çıkar
+5. **İlk açılışta** "geliştirici doğrulanmadı / hasarlı" hatası alırsan Terminal'i aç ve şu komutu çalıştır:
+   ```bash
+   xattr -cr "/Applications/Trendyol Soru-Cevap.app"
+   ```
+   Bu komut macOS Gatekeeper'ın notarize edilmemiş uygulamalara koyduğu karantina işaretini kaldırır. Sadece **ilk DMG kurulumunda** gerekli — sonraki otomatik güncellemeler bu adımı atlar.
+6. Applications'tan çift tıkla → uygulama açılır
+7. Veriler `~/Library/Application Support/com.trendyolqa.app/` altında saklanır
+8. API kimlikleri macOS Keychain'de güvenli olarak tutulur
+
+### Apple Developer Notarization (Opsiyonel)
+
+Bu uyarıyı tamamen kaldırmak için Apple Developer hesabı ($99/yıl) + notarization gerekir. Dahili kullanım için genelde gereksiz.
 
 ## Windows SmartScreen Uyarısı
 

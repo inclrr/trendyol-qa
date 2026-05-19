@@ -6,7 +6,7 @@ import { Pencil, Plus, Trash } from "../components/icons";
 const emptyTpl: AnswerTemplate = {
   title: "",
   body: "",
-  category: "",
+  category: null,
   usageCount: 0,
   createdAt: 0,
 };

@@ -6,7 +6,7 @@ dist-ssr
 
 # Rust / Tauri
 src-tauri/target
-src-tauri/Cargo.lock
+# Cargo.lock: app olduğu için commit edilir (deterministic builds)
 
 # Editor
 .vscode/*

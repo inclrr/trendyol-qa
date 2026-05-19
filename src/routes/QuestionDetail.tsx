@@ -57,7 +57,7 @@ export default function QuestionDetail() {
             </button>
           </div>
         ) : (
-          <div>{loading ? t("app.loading") : "Soru bulunamadı."}</div>
+          <div>{loading ? t("app.loading") : t("app.notFound")}</div>
         )}
       </div>
     );

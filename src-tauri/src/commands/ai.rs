@@ -302,6 +302,7 @@ pub struct TrainPayload {
 pub struct TrainResult {
     pub training_id: i64,
     pub qa_pair_count: i64,
+    pub pairs_used: i64,
     pub system_prompt: String,
 }
 
@@ -398,9 +399,11 @@ pub async fn train_ai(
             "phase": "done",
         }),
     );
+    let pairs_used = crate::ai::prompt::training_pair_limit(pairs.len()) as i64;
     Ok(TrainResult {
         training_id: id,
         qa_pair_count: pairs.len() as i64,
+        pairs_used,
         system_prompt: summary,
     })
 }
@@ -528,11 +531,36 @@ pub async fn delete_training(
     state: State<'_, Arc<AppState>>,
     training_id: i64,
 ) -> AppResult<()> {
-    let conn = state.db.get()?;
-    conn.execute(
+    let mut conn = state.db.get()?;
+    let tx = conn.transaction()?;
+    let was_active: bool = tx
+        .query_row(
+            "SELECT active FROM ai_training_runs WHERE id = ?1",
+            params![training_id],
+            |r| r.get::<_, i64>(0).map(|v| v != 0),
+        )
+        .unwrap_or(false);
+    tx.execute(
         "DELETE FROM ai_training_runs WHERE id = ?1",
         params![training_id],
     )?;
+    // Silinen aktifse, en yeni kalan eğitimi otomatik aktif yap (yoksa hiçbir şey)
+    if was_active {
+        let next_id: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM ai_training_runs ORDER BY created_at DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        if let Some(id) = next_id {
+            tx.execute(
+                "UPDATE ai_training_runs SET active = 1 WHERE id = ?1",
+                params![id],
+            )?;
+        }
+    }
+    tx.commit()?;
     Ok(())
 }
 
