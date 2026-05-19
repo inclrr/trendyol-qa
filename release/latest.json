@@ -1,11 +1,11 @@
 {
+  "pub_date": "2026-05-19T09:45:49Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSSFM1eCszUzlXRTdwaEFpMUNkOHJZeFhZYzlVOURSL01ONllmNUVJS0grTit4ZURlam9TWUJSbFk2MGMxaXRJUEFHQy9JbU9aSzU3ZzZldWh5Y1lGVWxVMk5lbTZ0UFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5MTgzNTk4CWZpbGU6VHJlbmR5b2wgU29ydS1DZXZhcF8wLjMuMV94NjQtc2V0dXAuZXhlCmJPSUEvS281YUlOSjhQRG5HcjZWaDg1a21wcmZnMWx4Q0sxVXU5dVd0dysyTDV3VDU2S0xoVUw4QjdyM2VIUjkzb1FKRGZibXVjS2hFb1JMT2xhN0JnPT0K",
-      "url": "https://github.com/inclrr/trendyol-qa/releases/download/v0.3.1/Trendyol.Soru-Cevap_0.3.1_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSSFM1eCszUzlXRTVBeHFhUzViZC9DTjR1Tk5DempXUXJPem82RE5VZm00RkU1SmFES2hpNUxVOFJpeE1OeFZxMk1XZE5QZ05sbWd4WEx5Sms3NmtVb2xtUGppdHBockFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5MTgzOTQ5CWZpbGU6VHJlbmR5b2wgU29ydS1DZXZhcF8wLjMuMl94NjQtc2V0dXAuZXhlCllhN3ZRTjRIOUNyekROalNYUjZiUENFV1lMZVhRRVVTdUFxbWtlaXVMQitURHZHNVlndkgrZi9leVYrMStzTzBwdDZiOEhHWncxK24zWWFkeHlDT0NBPT0K",
+      "url": "https://github.com/inclrr/trendyol-qa/releases/download/v0.3.2/Trendyol.Soru-Cevap_0.3.2_x64-setup.exe"
     }
   },
-  "notes": "v0.3.1 hotfix: CSP politikasi geri alindi (v0.3.0 beyaz ekran fix)",
-  "version": "0.3.1",
-  "pub_date": "2026-05-19T09:39:59Z"
+  "notes": "v0.3.2 critical hotfix: schema_version tablo migration hatasi (v0.3.0 ve v0.3.1 acilmama sorununun gercek sebebi)",
+  "version": "0.3.2"
 }

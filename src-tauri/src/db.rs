@@ -129,7 +129,8 @@ const MIGRATIONS: &[(i64, &str)] = &[
     ),
     (
         2,
-        // v2: training_runs için orijinal prompt ve isim alanı, ayrıca name TEXT
+        // v2: training_runs için orijinal prompt ve isim alanı. Eski v0.3.0'da yarım
+        // uygulanmış olabileceği için ALTER hataları yutuluyor (aşağıdaki kodda).
         r#"
         ALTER TABLE ai_training_runs ADD COLUMN name TEXT;
         ALTER TABLE ai_training_runs ADD COLUMN original_prompt TEXT;
@@ -138,12 +139,17 @@ const MIGRATIONS: &[(i64, &str)] = &[
 ];
 
 fn run_migrations(conn: &mut DbConn) -> AppResult<()> {
+    // Eski sürümlerden upgrade için: schema_version tablosu zaten varsa applied_at sütununu
+    // eklemeye çalış (yoksa eklenir, varsa hata sessizce yutulur)
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_version (
-            version INTEGER NOT NULL PRIMARY KEY,
-            applied_at INTEGER NOT NULL
+            version INTEGER NOT NULL PRIMARY KEY
         );",
     )?;
+    let _ = conn.execute(
+        "ALTER TABLE schema_version ADD COLUMN applied_at INTEGER",
+        [],
+    );
 
     let current: i64 = conn
         .query_row(
@@ -158,7 +164,18 @@ fn run_migrations(conn: &mut DbConn) -> AppResult<()> {
             continue;
         }
         let tx = conn.transaction()?;
-        tx.execute_batch(sql)?;
+        // Migration içindeki ALTER TABLE'lar zaten uygulanmış olabilir (v0.3.0 fail durumu).
+        // Her cümleyi tek tek dene, "duplicate column" benzeri hataları yut.
+        for stmt in sql.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            if let Err(e) = tx.execute_batch(stmt) {
+                let msg = e.to_string().to_lowercase();
+                if msg.contains("duplicate column") || msg.contains("already exists") {
+                    log::warn!("Migration v{} cümlesi atlandı (zaten uygulanmış): {}", version, e);
+                } else {
+                    return Err(AppError::Db(format!("Migration v{} cümlesi başarısız: {}", version, e)));
+                }
+            }
+        }
         tx.execute(
             "INSERT INTO schema_version (version, applied_at) VALUES (?1, ?2)",
             params![*version, chrono::Utc::now().timestamp_millis()],
