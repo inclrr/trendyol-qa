@@ -17,7 +17,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$Version,
     [string]$Notes = "Bu sürümde çeşitli iyileştirmeler.",
-    [string]$KeyPath = "$env:USERPROFILE\.tauri\trendyol-qa.key"
+    [string]$KeyPath = "$env:USERPROFILE\.tauri\trendyol-qa.key",
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,8 +46,12 @@ function Compare-SemVer($a, $b) {
     }
     return 0
 }
-if ((Compare-SemVer $Version $currentVersion) -le 0) {
-    Write-Error "Yeni sürüm ($Version) mevcut sürümden ($currentVersion) büyük olmalı."
+if ((Compare-SemVer $Version $currentVersion) -lt 0) {
+    Write-Error "Yeni sürüm ($Version) mevcut sürümden ($currentVersion) küçük olamaz."
+    exit 1
+}
+if ((Compare-SemVer $Version $currentVersion) -eq 0 -and -not $Force) {
+    Write-Error "Sürüm $Version zaten kayıtlı. Aynı sürümü yeniden build etmek için -Force kullan."
     exit 1
 }
 
@@ -130,9 +135,10 @@ $signature = Get-Content $sigFile.FullName -Raw
 $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $endpoint = $conf.plugins.updater.endpoints[0]
 # Endpoint örn: https://github.com/USER/REPO/releases/latest/download/latest.json
-# Setup exe v{Version} release'inden indirilecek
 $repoBase = $endpoint -replace "/releases/latest/download/latest\.json$", ""
-$downloadUrl = "$repoBase/releases/download/v$Version/$($setupExe.Name)"
+# GitHub release asset upload'ında dosya adındaki boşluklar otomatik nokta'ya dönüşür
+$assetName = $setupExe.Name -replace ' ', '.'
+$downloadUrl = "$repoBase/releases/download/v$Version/$assetName"
 
 $manifest = @{
     version = $Version
