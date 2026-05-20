@@ -14,12 +14,18 @@ pub struct OllamaClient {
 impl OllamaClient {
     pub fn new(base_url: Option<String>) -> AppResult<Self> {
         let http = Client::builder()
-            .timeout(Duration::from_secs(120))
+            // Büyük modeller (12B+) CPU only'de cevap üretimi 5+ dakika sürebilir
+            .timeout(Duration::from_secs(600))
+            // İlk bağlantı için kısa timeout — servis kapalıysa hızlı fail
+            .connect_timeout(Duration::from_secs(5))
             .build()
             .map_err(|e| AppError::Http(e.to_string()))?;
-        let url = base_url
+        let raw = base_url
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "http://localhost:11434".to_string());
+            .unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
+        // Windows'ta bazı durumlarda `localhost` IPv6'ya çözülüp Ollama (IPv4) ile uyuşmuyor.
+        // Otomatik olarak 127.0.0.1'e dönüştür.
+        let url = raw.replace("://localhost", "://127.0.0.1");
         Ok(Self {
             base_url: url.trim_end_matches('/').to_string(),
             http,
@@ -153,10 +159,14 @@ impl AiProvider for OllamaClient {
         let resp = self.http.post(&url).json(&body).send().await.map_err(|e| {
             if e.is_connect() {
                 AppError::Ai(
-                    "Ollama bulunamadı. Ollama'nın çalıştığından emin olun.".into(),
+                    "Ollama bulunamadı. Ollama'nın çalıştığından emin olun (PowerShell: ollama list).".into(),
                 )
+            } else if e.is_timeout() {
+                AppError::Ai(format!(
+                    "Ollama yanıt vermedi (zaman aşımı). Büyük modeller (12B+) CPU only'de çok yavaş — daha küçük model deneyin (örn. llama3.2:3b, mistral:7b)."
+                ))
             } else {
-                AppError::Http(e.to_string())
+                AppError::Http(format!("Ollama: {}", e))
             }
         })?;
         let status = resp.status();

@@ -39,7 +39,7 @@ const DEFAULTS: ProviderForm[] = [
     provider: "ollama",
     displayName: "Ollama (Yerel)",
     apiKey: "",
-    baseUrl: "http://localhost:11434",
+    baseUrl: "http://127.0.0.1:11434",
     selectedModel: "",
   },
 ];
@@ -412,6 +412,48 @@ export default function AISettings() {
             );
           })}
         </div>
+        <details className="card border-dashed border-info/30 bg-info/5 text-xs">
+          <summary className="cursor-pointer font-semibold text-info">
+            🔍 Tanılama (sorun bildirmek için kopyala)
+          </summary>
+          <div className="mt-2 space-y-2">
+            <div>
+              <div className="text-muted mb-1">DB'deki sağlayıcılar (list_ai_providers):</div>
+              <pre className="rounded bg-bg-elev-2 p-2 overflow-auto max-h-40">
+{JSON.stringify(list, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <div className="text-muted mb-1">UI form state:</div>
+              <pre className="rounded bg-bg-elev-2 p-2 overflow-auto max-h-40">
+{JSON.stringify(forms.map((f) => ({ ...f, apiKey: f.apiKey ? "***" : "" })), null, 2)}
+              </pre>
+            </div>
+            <div>
+              <div className="text-muted mb-1">Yüklenmiş modeller (list_models cache):</div>
+              <pre className="rounded bg-bg-elev-2 p-2 overflow-auto max-h-40">
+{JSON.stringify(models, null, 2)}
+              </pre>
+            </div>
+            <button
+              onClick={() => {
+                const text = JSON.stringify(
+                  {
+                    list,
+                    forms: forms.map((f) => ({ ...f, apiKey: f.apiKey ? "***" : "" })),
+                    models,
+                  },
+                  null,
+                  2
+                );
+                navigator.clipboard.writeText(text);
+              }}
+              className="btn-secondary text-xs"
+            >
+              📋 Tümünü Panoya Kopyala
+            </button>
+          </div>
+        </details>
       </section>
 
       <section className="card space-y-3">

@@ -4,6 +4,11 @@ Tüm önemli değişiklikler burada listelenir. Versiyon formatı [SemVer](https
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-05-20
+
+### Eklendi
+- **AI Ayarları'na Tanılama paneli**: DB'deki provider satırları + UI form state + yüklenen modeller JSON olarak görüntülenir. Sorun bildirimi için "Tümünü Panoya Kopyala" butonu. Model kaybolma / model görünmeme bug'larını teşhis etmek için.
+
 ## [0.5.3] - 2026-05-20
 
 ### Düzeltildi
