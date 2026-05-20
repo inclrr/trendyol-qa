@@ -4,6 +4,12 @@ Tüm önemli değişiklikler burada listelenir. Versiyon formatı [SemVer](https
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-05-20
+
+### Düzeltildi
+- **AI sağlayıcı model seçimi kaybolma**: Dropdown'dan model seçince state güncellenir ama "Kaydet" basılmazsa DB'ye yazılmıyordu. Artık seçim anında otomatik kaydedilir; sekme değişip dönünce seçim korunur. Tüm sağlayıcılar (Gemini, OpenRouter, Ollama) için geçerli.
+- **"Aktif Yap" sessiz fail**: Provider DB'de yoksa (özellikle Ollama'da yeni keysiz akış) UPDATE WHERE eşleşmiyor, kullanıcı aktif olduğunu sanıyordu. Artık önce satır oluşturulur.
+
 ## [0.5.1] - 2026-05-20
 
 ### Düzeltildi

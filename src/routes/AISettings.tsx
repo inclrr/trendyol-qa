@@ -159,8 +159,30 @@ export default function AISettings() {
   }
 
   async function setActiveProvider(provider: string) {
+    // Provider DB'de yoksa önce kaydet (UPDATE WHERE eşleşmediği için aktif yap sessizce fail oluyordu)
+    const exists = list.find((x) => x.provider === provider);
+    if (!exists) {
+      const form = forms.find((f) => f.provider === provider);
+      if (form) await saveProvider(form);
+    }
     await api.setActiveProvider(provider);
     await refresh();
+  }
+
+  /** Model dropdown'ı veya base URL değiştiğinde provider satırını otomatik DB'ye yaz */
+  async function autoSaveProvider(form: ProviderForm) {
+    try {
+      await api.upsertAiProvider({
+        provider: form.provider,
+        displayName: form.displayName,
+        selectedModel: form.selectedModel || null,
+        baseUrl: form.baseUrl || null,
+        apiKey: null, // mevcut key korunsun (COALESCE arka tarafta)
+      });
+      // refresh çağırmıyoruz — kullanıcının seçim state'ini override etmesin
+    } catch (e) {
+      console.warn("autoSave provider hatası", e);
+    }
   }
 
   async function deleteProvider(provider: string) {
@@ -303,15 +325,17 @@ export default function AISettings() {
                     <select
                       className="input"
                       value={form.selectedModel}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const newModel = e.target.value;
+                        const updated = { ...form, selectedModel: newModel };
                         setForms((prev) =>
                           prev.map((f) =>
-                            f.provider === form.provider
-                              ? { ...f, selectedModel: e.target.value }
-                              : f
+                            f.provider === form.provider ? updated : f
                           )
-                        )
-                      }
+                        );
+                        // Model seçimi otomatik kaydet — kullanıcı Kaydet'e basmadan da kalıcı
+                        autoSaveProvider(updated);
+                      }}
                     >
                       <option value="">—</option>
                       {ms.map((m) => (
