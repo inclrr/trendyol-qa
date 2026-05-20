@@ -4,7 +4,12 @@ Tüm önemli değişiklikler burada listelenir. Versiyon formatı [SemVer](https
 
 ## [Unreleased]
 
-## [0.5.2] - 2026-05-20
+## [0.5.3] - 2026-05-20
+
+### Düzeltildi
+- **AI model seçimi sekme değişince sıfırlanma (kalıcı çözüm)**: Backend SQL'de `COALESCE` mantığı bazı durumlarda eski değeri tutuyordu; uygulama tarafında karar verip backend'e net değer gönderiliyor artık. Frontend tarafında `saveProvider` `refresh()` yerine doğrudan backend'in döndürdüğü değeri state'e yazıyor (race koşulu önlendi). Hatalar artık `alert` ile gösterilir.
+
+
 
 ### Düzeltildi
 - **AI sağlayıcı model seçimi kaybolma**: Dropdown'dan model seçince state güncellenir ama "Kaydet" basılmazsa DB'ye yazılmıyordu. Artık seçim anında otomatik kaydedilir; sekme değişip dönünce seçim korunur. Tüm sağlayıcılar (Gemini, OpenRouter, Ollama) için geçerli.

@@ -82,17 +82,37 @@ pub async fn upsert_ai_provider(
 ) -> AppResult<AiProviderRow> {
     let now = Utc::now().timestamp_millis();
     let conn = state.db.get()?;
+    // selected_model null geldiyse mevcut değeri koru, dolu geldiyse override.
+    // COALESCE'i kaldırdık çünkü bazı durumlarda davranış bekleneceği gibi olmuyordu —
+    // değeri SQL tarafında değil, app tarafında karar verip belirgin gönderiyoruz.
+    let current_model: Option<String> = conn
+        .query_row(
+            "SELECT selected_model FROM ai_providers WHERE provider = ?1",
+            params![payload.provider],
+            |r| r.get(0),
+        )
+        .unwrap_or(None);
+    let final_model = payload
+        .selected_model
+        .clone()
+        .or(current_model);
+    log::info!(
+        "upsert_ai_provider: provider={} selected_model={:?} base_url={:?}",
+        payload.provider,
+        final_model,
+        payload.base_url
+    );
     conn.execute(
         "INSERT INTO ai_providers (provider, display_name, selected_model, base_url, active, created_at) \
          VALUES (?1, ?2, ?3, ?4, 0, ?5) \
          ON CONFLICT(provider) DO UPDATE SET \
             display_name = excluded.display_name, \
-            selected_model = COALESCE(excluded.selected_model, ai_providers.selected_model), \
+            selected_model = excluded.selected_model, \
             base_url = excluded.base_url",
         params![
             payload.provider,
             payload.display_name,
-            payload.selected_model,
+            final_model,
             payload.base_url,
             now
         ],

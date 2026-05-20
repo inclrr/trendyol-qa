@@ -121,19 +121,37 @@ export default function AISettings() {
   async function saveProvider(form: ProviderForm) {
     setBusy(true);
     try {
-      await api.upsertAiProvider({
+      const result = await api.upsertAiProvider({
         provider: form.provider,
         displayName: form.displayName,
         selectedModel: form.selectedModel || null,
         baseUrl: form.baseUrl || null,
         apiKey: form.apiKey || null,
       });
-      await refresh();
+      // DB'den dönen sonuca güven; refresh state'i override etmesin
       setForms((prev) =>
         prev.map((f) =>
-          f.provider === form.provider ? { ...f, apiKey: "" } : f
+          f.provider === form.provider
+            ? {
+                ...f,
+                displayName: result.displayName,
+                baseUrl: result.baseUrl ?? f.baseUrl,
+                selectedModel: result.selectedModel ?? f.selectedModel,
+                apiKey: "",
+              }
+            : f
         )
       );
+      setList((prev) => {
+        const idx = prev.findIndex((p) => p.provider === result.provider);
+        if (idx === -1) return [...prev, result];
+        const copy = [...prev];
+        copy[idx] = result;
+        return copy;
+      });
+    } catch (e: any) {
+      alert(`Kaydetme hatası: ${e}`);
+      throw e;
     } finally {
       setBusy(false);
     }
