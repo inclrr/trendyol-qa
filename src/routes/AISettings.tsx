@@ -89,6 +89,18 @@ export default function AISettings() {
         };
       })
     );
+    // selectedModel'i olan provider'lar için modelleri arka planda yükle
+    // (dropdown'da kayıtlı modelin görünmesi için)
+    for (const r of rows) {
+      if (r.selectedModel && (r.hasApiKey || r.provider === "ollama")) {
+        api
+          .listModels(r.provider)
+          .then((ms) => setModels((p) => ({ ...p, [r.provider]: ms })))
+          .catch(() => {
+            // sessizce yok say — kullanıcı manuel "Modelleri Yükle" yapabilir
+          });
+      }
+    }
     const act = await api.getActiveTraining();
     setActive(act);
     setPromptDraft(act?.systemPrompt ?? "");
@@ -356,6 +368,13 @@ export default function AISettings() {
                       }}
                     >
                       <option value="">—</option>
+                      {/* Kayıtlı model henüz listeye yüklenmediyse fallback option */}
+                      {form.selectedModel &&
+                        !ms.find((m) => m.id === form.selectedModel) && (
+                          <option value={form.selectedModel}>
+                            {form.selectedModel} (kayıtlı)
+                          </option>
+                        )}
                       {ms.map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.name} ({m.id})

@@ -4,6 +4,11 @@ Tüm önemli değişiklikler burada listelenir. Versiyon formatı [SemVer](https
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-05-20
+
+### Düzeltildi
+- **AI model "kayıp" gibi görünme**: Aslında model DB'de doğru kayıtlıydı; ancak sayfa açıldığında modeller listesi sıfırdan yüklenmediği için dropdown boş görünüyordu. Şimdi sayfa açılışında `selectedModel`'i olan tüm sağlayıcıların modelleri arka planda otomatik yüklenir. Ek olarak henüz yüklenmemiş bir model dropdown'da "(kayıtlı)" rozetiyle görünür — kullanıcı kaybolmadığını anında görür.
+
 ## [0.5.4] - 2026-05-20
 
 ### Eklendi
