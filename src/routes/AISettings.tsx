@@ -142,7 +142,13 @@ export default function AISettings() {
   async function loadModels(form: ProviderForm) {
     setLoadingModels(form.provider);
     try {
-      if (form.apiKey) await saveProvider(form);
+      // Ollama API key gerektirmez, bu yüzden provider satırı yoksa burada oluşturulur.
+      // Diğer sağlayıcılarda da yeni key girilmişse önce kaydet.
+      const needsSave =
+        form.apiKey ||
+        form.provider === "ollama" ||
+        !list.find((x) => x.provider === form.provider);
+      if (needsSave) await saveProvider(form);
       const ms = await api.listModels(form.provider);
       setModels((p) => ({ ...p, [form.provider]: ms }));
     } catch (e: any) {

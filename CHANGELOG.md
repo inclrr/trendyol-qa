@@ -4,6 +4,12 @@ Tüm önemli değişiklikler burada listelenir. Versiyon formatı [SemVer](https
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-05-20
+
+### Düzeltildi
+- **Ollama "sağlayıcısı yapılandırılmamış" hatası**: API key gerektirmediği için provider DB satırı oluşturulmuyordu. "Modelleri Yükle" artık Ollama için provider'ı otomatik kaydeder.
+- **Settings'te kalıcı Sürüm Geçmişi**: 📜 butonu ile tüm CHANGELOG uygulama içinde okunabilir (offline). Güncelleme bağımlılığı yok.
+
 ## [0.5.0] - 2026-05-19
 
 ### Önemli Değişiklikler
