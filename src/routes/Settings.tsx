@@ -6,6 +6,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { relaunch } from "@tauri-apps/plugin-process";
 import { api } from "../api/tauri";
 import { openExternal } from "../lib/open";
+import { parseChangelog } from "../lib/changelog";
 import { useUpdaterStore } from "../stores/useUpdaterStore";
 import { RefreshCw } from "../components/icons";
 
@@ -23,6 +24,8 @@ export default function Settings() {
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [backupErr, setBackupErr] = useState<string | null>(null);
   const [restartCountdown, setRestartCountdown] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const changelogEntries = parseChangelog();
   const {
     checking,
     available,
@@ -213,7 +216,7 @@ export default function Settings() {
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={manualCheck}
             disabled={checking || downloading}
@@ -227,7 +230,59 @@ export default function Settings() {
           <span className="text-xs text-muted">
             {t("settings.lastChecked")}: {formatLastChecked()}
           </span>
+          <button
+            onClick={() => setHistoryOpen(!historyOpen)}
+            className="btn-ghost text-xs ml-auto"
+          >
+            📜{" "}
+            {historyOpen
+              ? t("settings.hideHistory")
+              : t("settings.versionHistory")}
+          </button>
         </div>
+
+        {historyOpen && (
+          <div className="border-t border-border pt-3 space-y-3">
+            <p className="text-xs text-muted">{t("settings.versionHistoryHint")}</p>
+            <div className="max-h-[420px] overflow-auto rounded-md bg-bg-elev-2 p-3 text-xs leading-relaxed space-y-3">
+              {changelogEntries.map((entry) => (
+                <div key={entry.version} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono font-semibold text-brand">
+                      v{entry.version}
+                    </span>
+                    {entry.date && (
+                      <span className="text-[10px] text-muted">{entry.date}</span>
+                    )}
+                  </div>
+                  {entry.body.split("\n").map((line, i) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return <br key={i} />;
+                    if (trimmed.startsWith("### ")) {
+                      return (
+                        <div key={i} className="mt-2 font-semibold text-fg">
+                          {trimmed.slice(4)}
+                        </div>
+                      );
+                    }
+                    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+                      return (
+                        <div key={i} className="ml-2">
+                          •{" "}
+                          {trimmed
+                            .slice(2)
+                            .replace(/\*\*([^*]+)\*\*/g, "$1")
+                            .replace(/`([^`]+)`/g, "$1")}
+                        </div>
+                      );
+                    }
+                    return <div key={i}>{trimmed}</div>;
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="card space-y-3">

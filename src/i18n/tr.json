@@ -236,7 +236,11 @@
     "restoreConfirm": "Mevcut verileriniz silinip yedek geri yüklenecek. Devam etmek istiyor musunuz?",
     "restartingIn": "{{secs}} saniye içinde yeniden başlatılıyor…",
     "whatsNew": "Yenilikler",
-    "viewFullChangelog": "Detaylı sürüm geçmişi"
+    "viewFullChangelog": "Detaylı sürüm geçmişi",
+    "versionHistory": "Sürüm Geçmişi",
+    "versionHistoryHint": "Tüm sürümlerde nelerin değiştiğini buradan görebilirsiniz.",
+    "showHistory": "Geçmişi Göster",
+    "hideHistory": "Gizle"
   },
   "errors": {
     "generic": "Bir hata oluştu",
