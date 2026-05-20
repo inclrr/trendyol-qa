@@ -80,11 +80,20 @@ async fn run_cycle(app: &AppHandle, state: &Arc<AppState>) -> Result<(), String>
                                             question_id,
                                         );
                                     }
-                                    Err(e) => log::warn!(
-                                        "BG AI draft hatası (Q{}): {}",
-                                        question_id,
-                                        e
-                                    ),
+                                    Err(e) => {
+                                        log::warn!(
+                                            "BG AI draft hatası (Q{}): {}",
+                                            question_id,
+                                            e
+                                        );
+                                        let _ = app_clone.emit(
+                                            "ai-draft:error",
+                                            serde_json::json!({
+                                                "questionId": question_id,
+                                                "message": e.to_string(),
+                                            }),
+                                        );
+                                    }
                                 }
                             });
                         }

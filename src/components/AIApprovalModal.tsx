@@ -4,7 +4,15 @@ import { api, type StoredQuestion } from "../api/tauri";
 import AnswerComposer from "./AnswerComposer";
 import ImageLightbox from "./ImageLightbox";
 import { ExternalLink, Sparkles, X } from "./icons";
-import { formatDate, statusColor, statusLabel } from "../lib/format";
+import {
+  deadlineColor,
+  deadlineIcon,
+  formatDate,
+  getDeadlineState,
+  statusColor,
+  statusLabel,
+} from "../lib/format";
+import { useAppStore } from "../stores/useAppStore";
 import { openExternal } from "../lib/open";
 
 interface Props {
@@ -21,6 +29,8 @@ export default function AIApprovalModal({ questionId, onClose, onSent }: Props) 
   const { t } = useTranslation();
   const [question, setQuestion] = useState<StoredQuestion | null>(null);
   const [loading, setLoading] = useState(true);
+  const nowTick = useAppStore((s) => s.nowTick);
+  const deadlineHours = useAppStore((s) => s.answerDeadlineHours);
 
   useEffect(() => {
     let alive = true;
@@ -80,6 +90,23 @@ export default function AIApprovalModal({ questionId, onClose, onSent }: Props) 
             <span className={`badge ${statusColor(question.status)}`}>
               {statusLabel(question.status)}
             </span>
+            {question.status === "WAITING_FOR_ANSWER" &&
+              (() => {
+                const dl = getDeadlineState(
+                  question.creationDate,
+                  deadlineHours,
+                  nowTick
+                );
+                return (
+                  <span
+                    className={`badge text-sm font-semibold ${deadlineColor(
+                      dl.status
+                    )}`}
+                  >
+                    {deadlineIcon(dl.status)} {dl.label}
+                  </span>
+                );
+              })()}
           </div>
           <button onClick={onClose} className="btn-ghost p-2" aria-label="Kapat">
             <X className="h-4 w-4" />

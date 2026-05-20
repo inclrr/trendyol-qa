@@ -1,6 +1,15 @@
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import type { StoredQuestion } from "../api/tauri";
-import { formatRelativeTime, statusColor, statusLabel } from "../lib/format";
+import {
+  deadlineColor,
+  deadlineIcon,
+  formatRelativeTime,
+  getDeadlineState,
+  statusColor,
+  statusLabel,
+} from "../lib/format";
+import { useAppStore } from "../stores/useAppStore";
 import ImageLightbox from "./ImageLightbox";
 
 interface Props {
@@ -12,7 +21,7 @@ interface Props {
   historyCount?: number;
 }
 
-export default function QuestionCard({
+function QuestionCard({
   question,
   selected,
   selectable,
@@ -21,6 +30,12 @@ export default function QuestionCard({
   historyCount,
 }: Props) {
   const { t } = useTranslation();
+  const nowTick = useAppStore((s) => s.nowTick);
+  const deadlineHours = useAppStore((s) => s.answerDeadlineHours);
+  const showDeadline = question.status === "WAITING_FOR_ANSWER";
+  const dl = showDeadline
+    ? getDeadlineState(question.creationDate, deadlineHours, nowTick)
+    : null;
   return (
     <div
       className={`card cursor-pointer transition hover:border-brand/40 ${
@@ -66,6 +81,14 @@ export default function QuestionCard({
                 💬 {historyCount}
               </span>
             )}
+            {dl && (
+              <span
+                className={`badge ${deadlineColor(dl.status)}`}
+                title={`${deadlineHours} saat içinde cevaplanmalı`}
+              >
+                {deadlineIcon(dl.status)} {dl.label}
+              </span>
+            )}
           </div>
           <p className="line-clamp-2 text-sm text-fg">{question.text}</p>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted">
@@ -80,3 +103,5 @@ export default function QuestionCard({
     </div>
   );
 }
+
+export default memo(QuestionCard);

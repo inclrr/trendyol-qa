@@ -79,6 +79,12 @@ struct ChatRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
     temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_k: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    frequency_penalty: Option<f32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,11 +128,16 @@ impl AiProvider for OpenRouterClient {
             role: "user".into(),
             content: req.user_prompt.to_string(),
         });
+        let opts = &req.options;
         let body = ChatRequest {
             model: req.model,
             messages,
             max_tokens: req.max_tokens,
-            temperature: 0.4,
+            temperature: opts.temperature.unwrap_or(0.3),
+            top_p: opts.top_p,
+            top_k: opts.top_k,
+            // OpenAI-uyumlu API'lerde repeat_penalty yerine frequency_penalty (0-2 range)
+            frequency_penalty: opts.repeat_penalty.map(|r| (r - 1.0).clamp(0.0, 2.0)),
         };
         let resp = self
             .http

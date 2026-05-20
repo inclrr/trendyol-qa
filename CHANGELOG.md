@@ -4,6 +4,37 @@ Tüm önemli değişiklikler burada listelenir. Versiyon formatı [SemVer](https
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-20
+
+### Eklendi
+- **Gelişmiş AI Ayar Paneli**: Her sağlayıcının altında "⚙️ Gelişmiş Ayarlar" — temperature, top_p, top_k, repeat_penalty slider'ları; Ollama için ek olarak num_ctx ve keep_alive seçimi. "Tutarlı (önerilen)" ve "Yaratıcı" preset'leriyle tek tıkla profil. Değişiklikler otomatik kaydedilir.
+- **2 Saatlik Cevap Deadline Sayacı**: Her bekleyen soru kartında ve modallarda kalan süre rozeti: 🟢 1 sa 30 dk kaldı → 🟡 45 dk → 🔴 20 dk! (pulse) → ⚫ Süre doldu. Inbox'ta 30 dakika kala kritik bant uyarısı. Süre Ayarlar'dan değiştirilebilir (1-24 saat).
+- **Embedding-Based RAG (Ollama)**: Soruları semantik olarak embed eder, geçmiş Q&A kayıtlarıyla cosine benzerlik yapar. Kelime tabanlı FTS5'in bulamadığı eş anlamlı/farklı ifadeli sorularda doğru bağlamı yakalar. Ayarlar > "AI Eğitim Verisi" altında etkinleştirilir; `nomic-embed-text` modeli önerilir. "Yeniden İndeksle" butonu mevcut Q&A'leri toplu embedler. Embedding kapalıyken veya başarısızsa otomatik FTS5'e düşer.
+- **Modelfile Generator (Özel Ollama Model)**: Aktif eğitimden tek tıkla özel Ollama modeli oluştur. System prompt modelin kendisine gömülür — her cevapta tekrar gönderilmez, %30-50 hız kazancı + token tasarrufu.
+- **Model Önerisi Sihirbazı (2026 Güncel)**: 3 adımlı wizard (donanım → öncelik → sonuç) sistemine RAM, GPU, VRAM ve önceliğe göre 2026 Mayıs itibarıyla en güncel Ollama modellerini önerir (Qwen2.5:7b, Llama3.2:3b, Phi-3 Mini, Mistral 7B, Gemma3:12b). "Panoya Kopyala" + doğrudan seç.
+- **AI Stilini Test Et**: Eğitim sonrası 3 örnek soruda (kargo/iade/beden) modelin nasıl cevap verdiğini paralel olarak gösteren modal.
+- **Linux Desteği**: AppImage + .deb bundle'ları, GitHub Actions matrix'inde Ubuntu 22.04 job, sistem bağımlılıkları otomatik kurulur, latest.json manifest'inde `linux-x86_64` platformu.
+- **Cloud/Yerel Model Algılama**: Ollama'da `gemini-`, `claude-`, `gpt-` veya `*-cloud` adlı modeller "☁️ Cloud (signin gerek)" rozetiyle, yereller "💻 Yerel" olarak işaretlenir.
+- **AI Otomatik Cevap Hata Event'i**: Arka planda taslak üretimi başarısız olursa `ai-draft:error` event'i emit edilir; frontend sessiz log'lar (kullanıcıya popup gösterilmez).
+- **RAG Yönetim UI**: Settings > "AI Eğitim Verisi" — embedding etkinleştir/devre dışı bırak, model + base URL ayarla, "Yeniden İndeksle" toplu işlem, ilerleme barı.
+
+### Geliştirildi
+- **Daha Tutarlı ve Hızlı AI**: Varsayılan sampling temperature 0.4 → 0.3, top_p 0.7, top_k 20, repeat_penalty 1.15. Aynı soruya farklı zamanlarda daha tutarlı cevap.
+- **Modele Göre Dinamik max_tokens**: 3B/mini modellerde 800, 7B-13B'de 1024, 70B+'da 2048. Gereksiz token israfı yok.
+- **Ollama `keep_alive` Optimizasyonu**: Model varsayılan 10 dakika RAM'de tutulur — peş peşe cevap üretimi 5-10x hızlanır (ilk yükleme süresi sadece bir kez ödenir).
+- **OpenRouter Genişletmesi**: `frequency_penalty` (repeat_penalty'den map'lenir), `top_p`, `top_k` opsiyonel parametreler.
+- **Gemini Genişletmesi**: `temperature`, `topP`, `topK` opsiyonel parametreler `generationConfig` altında.
+
+### Veritabanı Şeması
+- **v4**: `ai_providers` tablosuna `options_json TEXT` (sağlayıcı başına gelişmiş ayarlar JSON).
+- **v5**: Yeni `qa_embeddings (question_id, embedding BLOB, model, created_at)` tablosu + `idx_qa_embeddings_model` index.
+
+### Yeni Ayarlar (otomatik default'lanır)
+- `answer_deadline_hours = 2` — cevap süresi (1-24 saat arası ayarlanabilir)
+- `embedding_enabled = false` — embedding RAG açık/kapalı
+- `embedding_model = nomic-embed-text` — kullanılacak embedding modeli
+- `embedding_base_url = http://127.0.0.1:11434` — Ollama base URL
+
 ## [0.5.5] - 2026-05-20
 
 ### Düzeltildi

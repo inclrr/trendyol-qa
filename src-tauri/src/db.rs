@@ -144,6 +144,26 @@ const MIGRATIONS: &[(i64, &str)] = &[
         ALTER TABLE questions ADD COLUMN draft_ai_generated_at INTEGER;
         "#,
     ),
+    (
+        4,
+        // v4: AI provider'lar için gelişmiş ayarlar JSON
+        r#"
+        ALTER TABLE ai_providers ADD COLUMN options_json TEXT;
+        "#,
+    ),
+    (
+        5,
+        // v5: Embedding-based RAG için ayrı tablo
+        r#"
+        CREATE TABLE IF NOT EXISTS qa_embeddings (
+            question_id INTEGER PRIMARY KEY,
+            embedding BLOB NOT NULL,
+            model TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_qa_embeddings_model ON qa_embeddings(model);
+        "#,
+    ),
 ];
 
 fn run_migrations(conn: &mut DbConn) -> AppResult<()> {
@@ -208,6 +228,10 @@ fn seed_defaults(conn: &DbConn) -> AppResult<()> {
         ("auto_advance_after_answer", "true"),
         ("auto_ai_reply", "true"),
         ("notification_sound_enabled", "true"),
+        ("answer_deadline_hours", "2"),
+        ("embedding_enabled", "false"),
+        ("embedding_model", "nomic-embed-text"),
+        ("embedding_base_url", "http://127.0.0.1:11434"),
     ];
     for (k, v) in defaults {
         conn.execute(

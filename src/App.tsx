@@ -16,7 +16,14 @@ import { useUpdaterStore } from "./stores/useUpdaterStore";
 import { api } from "./api/tauri";
 
 export default function App() {
-  const { theme, setTheme, setStores, setPendingCount } = useAppStore();
+  const {
+    theme,
+    setTheme,
+    setStores,
+    setPendingCount,
+    setNowTick,
+    setAnswerDeadlineHours,
+  } = useAppStore();
   const silentCheckUpdate = useUpdaterStore((s) => s.silentCheck);
   const nav = useNavigate();
   const setInboxStatus = useInboxStore((s) => s.setStatus);
@@ -28,6 +35,8 @@ export default function App() {
       const t = (settings.theme as "light" | "dark" | "system") || "system";
       setTheme(t);
       applyTheme(t);
+      const dh = parseFloat(settings.answer_deadline_hours ?? "2");
+      if (!Number.isNaN(dh) && dh > 0) setAnswerDeadlineHours(dh);
       const stores = await api.listStores();
       setStores(stores);
       await refreshPending();
@@ -48,6 +57,14 @@ export default function App() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // Deadline rozetleri için global tick (30sn)
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 30000);
+    return () => window.clearInterval(interval);
+  }, [setNowTick]);
 
   useEffect(() => {
     const un1 = listen("questions:synced", () => {
@@ -84,6 +101,16 @@ export default function App() {
       // Background AI cevap hazır oldu; pending count refresh
       refreshPending();
     });
+    const un5 = listen<{ questionId: number; message: string }>(
+      "ai-draft:error",
+      (ev) => {
+        console.warn(
+          "AI draft hatası (sessiz):",
+          ev.payload.questionId,
+          ev.payload.message
+        );
+      }
+    );
     // Pencere focus alınca update kontrolü (son kontrolden 5dk+ geçtiyse)
     let lastFocusCheck = 0;
     const onFocus = () => {
@@ -99,6 +126,7 @@ export default function App() {
       un2.then((f) => f());
       un3.then((f) => f());
       un4.then((f) => f());
+      un5.then((f) => f());
       window.removeEventListener("focus", onFocus);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

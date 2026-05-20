@@ -5,7 +5,15 @@ import { api, type StoredQuestion } from "../api/tauri";
 import AnswerComposer from "./AnswerComposer";
 import ImageLightbox from "./ImageLightbox";
 import { ChevronLeft, ExternalLink, X } from "./icons";
-import { formatDate, statusColor, statusLabel } from "../lib/format";
+import {
+  deadlineColor,
+  deadlineIcon,
+  formatDate,
+  getDeadlineState,
+  statusColor,
+  statusLabel,
+} from "../lib/format";
+import { useAppStore } from "../stores/useAppStore";
 import { openExternal } from "../lib/open";
 
 interface Props {
@@ -31,6 +39,8 @@ export default function QuestionModal({
   const { t } = useTranslation();
   const nav = useNavigate();
   const [historyCount, setHistoryCount] = useState<number>(0);
+  const nowTick = useAppStore((s) => s.nowTick);
+  const deadlineHours = useAppStore((s) => s.answerDeadlineHours);
 
   useEffect(() => {
     if (question.customerId) {
@@ -106,6 +116,23 @@ export default function QuestionModal({
                 <span className="badge bg-bg-elev-2 text-muted border border-border">
                   {question.storeName}
                 </span>
+                {question.status === "WAITING_FOR_ANSWER" &&
+                  (() => {
+                    const dl = getDeadlineState(
+                      question.creationDate,
+                      deadlineHours,
+                      nowTick
+                    );
+                    return (
+                      <span
+                        className={`badge text-sm font-semibold ${deadlineColor(
+                          dl.status
+                        )}`}
+                      >
+                        {deadlineIcon(dl.status)} {dl.label}
+                      </span>
+                    );
+                  })()}
               </div>
               <div className="text-xs text-muted mt-1">
                 {question.customerName || t("app.anonymous")} ·{" "}

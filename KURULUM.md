@@ -10,6 +10,8 @@ Otomatik build sistemi sayesinde her `git push --tags` ile GitHub Actions releas
 |---|---|---|
 | **Windows 10/11** | `Trendyol.Soru-Cevap_X.Y.Z_x64-setup.exe` | ~5 MB |
 | **macOS Apple Silicon (M1/M2/M3/M4)** | `Trendyol.Soru-Cevap_X.Y.Z_aarch64.dmg` | ~7 MB |
+| **Linux x86_64 (AppImage)** | `Trendyol.Soru-Cevap_X.Y.Z_amd64.AppImage` | ~80 MB |
+| **Linux x86_64 (Debian/Ubuntu)** | `Trendyol.Soru-Cevap_X.Y.Z_amd64.deb` | ~10 MB |
 
 ## Lokal Build (Geliştirici)
 
@@ -74,6 +76,48 @@ Dezavantajlar:
 ### Apple Developer Notarization (Opsiyonel)
 
 Bu uyarıyı tamamen kaldırmak için Apple Developer hesabı ($99/yıl) + notarization gerekir. Dahili kullanım için genelde gereksiz.
+
+## Linux Kurulum
+
+### AppImage (önerilen, dağıtım bağımsız)
+
+1. `.AppImage` dosyasını indir
+2. Çalıştırma izni ver:
+   ```bash
+   chmod +x Trendyol.Soru-Cevap_*.AppImage
+   ```
+3. Çift tıkla veya terminal'den çalıştır:
+   ```bash
+   ./Trendyol.Soru-Cevap_*.AppImage
+   ```
+
+AppImage tek dosyadır; bağımlılıklar içerir, kurulum gerekmez.
+
+### .deb (Debian / Ubuntu / Mint)
+
+```bash
+sudo dpkg -i Trendyol.Soru-Cevap_*.deb
+# Bağımlılık eksikse:
+sudo apt-get install -f
+```
+
+Kurulum sonrası uygulama menüsünden "Trendyol Soru-Cevap" ile bulunur.
+
+### Linux'ta Ollama
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5:7b
+```
+
+Uygulamada **Yapay Zeka > Model Önerisi Sihirbazı** ile donanımına uygun modeli bulabilirsin.
+
+### Linux Veri Konumu
+
+| Veri | Konum |
+|---|---|
+| SQLite veritabanı | `~/.local/share/com.trendyolqa.app/trendyol_qa.sqlite` |
+| API kimlik bilgileri | `~/.local/share/com.trendyolqa.app/secret_store.bin` (Argon2id + ChaCha20-Poly1305) |
 
 ## Windows SmartScreen Uyarısı
 

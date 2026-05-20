@@ -74,6 +74,8 @@ struct ChatRequest<'a> {
     model: &'a str,
     messages: Vec<ChatMessage>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keep_alive: Option<String>,
     options: ChatOptions,
 }
 
@@ -83,9 +85,17 @@ struct ChatMessage {
     content: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 struct ChatOptions {
     temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_k: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repeat_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_ctx: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     num_predict: Option<u32>,
 }
@@ -124,6 +134,11 @@ impl AiProvider for OllamaClient {
                     }
                 }
                 desc_parts.push(format!("{} MB", size_mb));
+                if is_cloud_model(&m.name) {
+                    desc_parts.push("☁️ Cloud (signin gerek)".into());
+                } else {
+                    desc_parts.push("💻 Yerel".into());
+                }
                 AiModel {
                     id: m.name.clone(),
                     name: m.name.clone(),
@@ -147,12 +162,18 @@ impl AiProvider for OllamaClient {
             role: "user".into(),
             content: req.user_prompt.to_string(),
         });
+        let opts = &req.options;
         let body = ChatRequest {
             model: req.model,
             messages,
             stream: false,
+            keep_alive: opts.keep_alive.clone().or_else(|| Some("10m".into())),
             options: ChatOptions {
-                temperature: 0.4,
+                temperature: opts.temperature.unwrap_or(0.3),
+                top_p: opts.top_p.or(Some(0.7)),
+                top_k: opts.top_k.or(Some(20)),
+                repeat_penalty: opts.repeat_penalty.or(Some(1.15)),
+                num_ctx: opts.num_ctx.or(Some(4096)),
                 num_predict: req.max_tokens,
             },
         };
@@ -182,6 +203,18 @@ impl AiProvider for OllamaClient {
             .ok_or_else(|| AppError::Ai("Ollama yanıtı boş döndü.".into()))?;
         Ok(text.to_string())
     }
+}
+
+/// Model adına bakarak Ollama Cloud (signin gerekli) olduğunu tahmin et.
+/// Cloud modelleri genelde sağlayıcı prefix'iyle gelir (gemini-, claude-, gpt-)
+/// veya `-cloud` / `-online` suffix taşır.
+fn is_cloud_model(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower.starts_with("gemini")
+        || lower.starts_with("claude")
+        || lower.starts_with("gpt-")
+        || lower.contains("-cloud")
+        || lower.contains("-online")
 }
 
 /// Health check — Ollama localhost'ta çalışıyor mu?

@@ -8,6 +8,7 @@ import StoreSelector from "../components/StoreSelector";
 import QuestionCard from "../components/QuestionCard";
 import QuestionModal from "../components/QuestionModal";
 import { RefreshCw, Search } from "../components/icons";
+import { getDeadlineState } from "../lib/format";
 
 const STATUSES = [
   "WAITING_FOR_ANSWER",
@@ -22,6 +23,8 @@ export default function Inbox() {
   const { t } = useTranslation();
   const nav = useNavigate();
   const { selectedStoreIds } = useAppStore();
+  const nowTick = useAppStore((s) => s.nowTick);
+  const deadlineHours = useAppStore((s) => s.answerDeadlineHours);
   const {
     status,
     preset,
@@ -263,6 +266,21 @@ export default function Inbox() {
           {syncMsg}
         </div>
       )}
+
+      {(() => {
+        const criticalCount = questions.filter(
+          (q) =>
+            q.status === "WAITING_FOR_ANSWER" &&
+            getDeadlineState(q.creationDate, deadlineHours, nowTick).status ===
+              "critical"
+        ).length;
+        if (criticalCount === 0) return null;
+        return (
+          <div className="animate-pulse rounded-lg border border-danger/40 bg-danger/10 px-4 py-2 text-sm font-medium text-danger">
+            ⚠️ {criticalCount} soru 30 dakika içinde süresini dolduracak!
+          </div>
+        );
+      })()}
 
       {error && (
         <div className="flex items-center justify-between rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">

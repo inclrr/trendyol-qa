@@ -38,6 +38,76 @@ export function statusLabel(status: string): string {
   }
 }
 
+export type DeadlineStatus = "fresh" | "warning" | "critical" | "expired";
+
+export interface DeadlineState {
+  remainingMs: number;
+  status: DeadlineStatus;
+  label: string;
+}
+
+export function getDeadlineState(
+  creationDate: number,
+  deadlineHours = 2,
+  now: number = Date.now()
+): DeadlineState {
+  const elapsed = now - creationDate;
+  const deadlineMs = deadlineHours * 60 * 60 * 1000;
+  const remaining = deadlineMs - elapsed;
+
+  if (remaining <= 0) {
+    return { remainingMs: remaining, status: "expired", label: "Süre doldu" };
+  }
+  const totalMin = Math.floor(remaining / 60000);
+  if (remaining < 30 * 60 * 1000) {
+    return {
+      remainingMs: remaining,
+      status: "critical",
+      label: `${totalMin} dk!`,
+    };
+  }
+  if (remaining < 60 * 60 * 1000) {
+    return {
+      remainingMs: remaining,
+      status: "warning",
+      label: `${totalMin} dk kaldı`,
+    };
+  }
+  const hr = Math.floor(remaining / 3600000);
+  const min = Math.floor((remaining % 3600000) / 60000);
+  return {
+    remainingMs: remaining,
+    status: "fresh",
+    label: `${hr} sa ${min} dk kaldı`,
+  };
+}
+
+export function deadlineColor(status: DeadlineStatus): string {
+  switch (status) {
+    case "fresh":
+      return "bg-success/15 text-success";
+    case "warning":
+      return "bg-warning/15 text-warning";
+    case "critical":
+      return "bg-danger/15 text-danger animate-pulse";
+    case "expired":
+      return "bg-muted/15 text-muted";
+  }
+}
+
+export function deadlineIcon(status: DeadlineStatus): string {
+  switch (status) {
+    case "fresh":
+      return "🟢";
+    case "warning":
+      return "🟡";
+    case "critical":
+      return "🔴";
+    case "expired":
+      return "⚫";
+  }
+}
+
 export function statusColor(status: string): string {
   switch (status) {
     case "WAITING_FOR_ANSWER":

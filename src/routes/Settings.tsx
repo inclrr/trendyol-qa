@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { listen } from "@tauri-apps/api/event";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { getVersion } from "@tauri-apps/api/app";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -8,6 +9,7 @@ import { api } from "../api/tauri";
 import { openExternal } from "../lib/open";
 import { parseChangelog } from "../lib/changelog";
 import { useUpdaterStore } from "../stores/useUpdaterStore";
+import { useAppStore } from "../stores/useAppStore";
 import { RefreshCw } from "../components/icons";
 
 export default function Settings() {
@@ -18,6 +20,8 @@ export default function Settings() {
   const [autoAdvance, setAutoAdvance] = useState(true);
   const [autoAiReply, setAutoAiReply] = useState(true);
   const [notificationSound, setNotificationSound] = useState(true);
+  const [deadlineHours, setDeadlineHours] = useState(2);
+  const setGlobalDeadlineHours = useAppStore((s) => s.setAnswerDeadlineHours);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [version, setVersion] = useState<string>("");
   const [backupBusy, setBackupBusy] = useState(false);
@@ -47,6 +51,8 @@ export default function Settings() {
       setAutoAdvance(s.auto_advance_after_answer !== "false");
       setAutoAiReply(s.auto_ai_reply !== "false");
       setNotificationSound(s.notification_sound_enabled !== "false");
+      const dh = parseFloat(s.answer_deadline_hours ?? "2");
+      if (!Number.isNaN(dh) && dh > 0) setDeadlineHours(dh);
       try {
         setAutostart(await isEnabled());
       } catch {
@@ -66,6 +72,8 @@ export default function Settings() {
     await api.setSetting("auto_advance_after_answer", String(autoAdvance));
     await api.setSetting("auto_ai_reply", String(autoAiReply));
     await api.setSetting("notification_sound_enabled", String(notificationSound));
+    await api.setSetting("answer_deadline_hours", String(deadlineHours));
+    setGlobalDeadlineHours(deadlineHours);
     try {
       if (autostart) await enable();
       else await disable();
@@ -314,7 +322,26 @@ export default function Settings() {
             </span>
           </div>
         </div>
+        <div>
+          <label className="label">Cevap Süresi (saat)</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={24}
+              step={1}
+              className="input max-w-[120px]"
+              value={deadlineHours}
+              onChange={(e) => setDeadlineHours(Number(e.target.value))}
+            />
+            <span className="text-xs text-muted">
+              Her soru için ideal cevap süresi. Sayaçlar buna göre yanar.
+            </span>
+          </div>
+        </div>
       </section>
+
+      <EmbeddingRagSection />
 
       <section className="card space-y-3">
         <h3 className="text-sm font-semibold text-muted">
@@ -415,5 +442,141 @@ export default function Settings() {
         {savedMsg && <span className="text-sm text-success">{savedMsg}</span>}
       </div>
     </div>
+  );
+}
+
+function EmbeddingRagSection() {
+  const [enabled, setEnabled] = useState(false);
+  const [model, setModel] = useState("nomic-embed-text");
+  const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434");
+  const [reindexBusy, setReindexBusy] = useState(false);
+  const [progress, setProgress] = useState<{
+    current: number;
+    total: number;
+    indexed: number;
+    failed: number;
+  } | null>(null);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const s = await api.getAllSettings();
+      setEnabled(s.embedding_enabled === "true");
+      setModel(s.embedding_model ?? "nomic-embed-text");
+      setBaseUrl(s.embedding_base_url ?? "http://127.0.0.1:11434");
+    })();
+    const un = listen<{
+      current: number;
+      total: number;
+      indexed: number;
+      failed: number;
+      done?: boolean;
+    }>("ai-reindex:progress", (ev) => {
+      setProgress(ev.payload);
+      if (ev.payload.done) {
+        setReindexBusy(false);
+      }
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  async function save() {
+    await api.setSetting("embedding_enabled", String(enabled));
+    await api.setSetting("embedding_model", model);
+    await api.setSetting("embedding_base_url", baseUrl);
+    setSavedMsg("Kaydedildi ✓");
+    window.setTimeout(() => setSavedMsg(null), 2500);
+  }
+
+  async function reindex() {
+    setReindexBusy(true);
+    setProgress(null);
+    try {
+      await api.reindexEmbeddings();
+    } catch (e: any) {
+      alert(String(e));
+      setReindexBusy(false);
+    }
+  }
+
+  return (
+    <section className="card space-y-3">
+      <h3 className="text-sm font-semibold text-muted">
+        AI Eğitim Verisi (Embedding RAG)
+      </h3>
+      <p className="text-xs text-muted">
+        Embedding-based RAG, sorulara semantik olarak benzer geçmiş cevapları
+        bulur. Kapalıyken FTS5 (kelime tabanlı) kullanılır.
+      </p>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+        />
+        Embedding RAG'i etkinleştir
+      </label>
+      <div>
+        <label className="label">Embedding modeli (Ollama)</label>
+        <input
+          className="input"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          placeholder="nomic-embed-text"
+        />
+        <div className="mt-1 text-xs text-muted">
+          Önce <code>ollama pull nomic-embed-text</code> ile indirin (~270 MB).
+        </div>
+      </div>
+      <div>
+        <label className="label">Ollama base URL</label>
+        <input
+          className="input"
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={save} className="btn-primary">
+          Kaydet
+        </button>
+        <button
+          onClick={reindex}
+          disabled={reindexBusy || !enabled}
+          className="btn-secondary"
+        >
+          {reindexBusy ? "İndeksleniyor…" : "Yeniden İndeksle"}
+        </button>
+        {savedMsg && (
+          <span className="self-center text-sm text-success">{savedMsg}</span>
+        )}
+      </div>
+      {progress && (
+        <div className="rounded-lg border border-border bg-bg-elev-2 p-2 text-xs">
+          <div className="flex justify-between">
+            <span>
+              {progress.current}/{progress.total} işlendi
+            </span>
+            <span className="text-muted">
+              ✓ {progress.indexed} · ✗ {progress.failed}
+            </span>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded bg-bg-elev">
+            <div
+              className="h-full bg-brand transition-all"
+              style={{
+                width: `${
+                  progress.total > 0
+                    ? (progress.current / progress.total) * 100
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

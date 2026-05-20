@@ -1,8 +1,8 @@
 use crate::ai::gemini::GeminiClient;
 use crate::ai::openrouter::OpenRouterClient;
 use crate::ai::prompt::{base_system_prompt, build_answer_prompt, build_training_prompt};
-use crate::ai::rag::{fetch_similar, format_context};
-use crate::ai::{AiModel, AiProvider, GenerationRequest};
+use crate::ai::rag::{fetch_similar_hybrid, format_context};
+use crate::ai::{AiModel, AiProvider, GenerationOptions, GenerationRequest};
 use crate::commands::questions::fetch_history_for_training;
 use crate::commands::secrets;
 use crate::errors::{AppError, AppResult};
@@ -24,6 +24,7 @@ pub struct AiProviderRow {
     pub active: bool,
     pub created_at: i64,
     pub has_api_key: bool,
+    pub options_json: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +38,8 @@ pub struct UpsertProviderPayload {
     pub base_url: Option<String>,
     #[serde(rename = "apiKey")]
     pub api_key: Option<String>,
+    #[serde(rename = "optionsJson")]
+    pub options_json: Option<String>,
 }
 
 fn row_to_provider(row: &rusqlite::Row) -> rusqlite::Result<(AiProviderRow, String)> {
@@ -50,6 +53,7 @@ fn row_to_provider(row: &rusqlite::Row) -> rusqlite::Result<(AiProviderRow, Stri
         active: row.get::<_, i64>(5)? != 0,
         created_at: row.get(6)?,
         has_api_key: false,
+        options_json: row.get(7).ok().flatten(),
     };
     Ok((p, provider))
 }
@@ -58,7 +62,7 @@ fn row_to_provider(row: &rusqlite::Row) -> rusqlite::Result<(AiProviderRow, Stri
 pub async fn list_ai_providers(state: State<'_, Arc<AppState>>) -> AppResult<Vec<AiProviderRow>> {
     let conn = state.db.get()?;
     let mut stmt = conn.prepare(
-        "SELECT id, provider, display_name, selected_model, base_url, active, created_at \
+        "SELECT id, provider, display_name, selected_model, base_url, active, created_at, options_json \
          FROM ai_providers ORDER BY provider",
     )?;
     let rows: Vec<(AiProviderRow, String)> = stmt
@@ -102,19 +106,30 @@ pub async fn upsert_ai_provider(
         final_model,
         payload.base_url
     );
+    // options_json null geldiyse mevcut değeri koru
+    let current_options: Option<String> = conn
+        .query_row(
+            "SELECT options_json FROM ai_providers WHERE provider = ?1",
+            params![payload.provider],
+            |r| r.get(0),
+        )
+        .unwrap_or(None);
+    let final_options = payload.options_json.clone().or(current_options);
     conn.execute(
-        "INSERT INTO ai_providers (provider, display_name, selected_model, base_url, active, created_at) \
-         VALUES (?1, ?2, ?3, ?4, 0, ?5) \
+        "INSERT INTO ai_providers (provider, display_name, selected_model, base_url, active, created_at, options_json) \
+         VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6) \
          ON CONFLICT(provider) DO UPDATE SET \
             display_name = excluded.display_name, \
             selected_model = excluded.selected_model, \
-            base_url = excluded.base_url",
+            base_url = excluded.base_url, \
+            options_json = excluded.options_json",
         params![
             payload.provider,
             payload.display_name,
             final_model,
             payload.base_url,
-            now
+            now,
+            final_options
         ],
     )?;
     if let Some(key) = payload.api_key {
@@ -123,7 +138,7 @@ pub async fn upsert_ai_provider(
         }
     }
     let row = conn.query_row(
-        "SELECT id, provider, display_name, selected_model, base_url, active, created_at \
+        "SELECT id, provider, display_name, selected_model, base_url, active, created_at, options_json \
          FROM ai_providers WHERE provider = ?1",
         params![payload.provider],
         |r| row_to_provider(r),
@@ -192,13 +207,20 @@ fn get_provider_row(state: &AppState, provider: &str) -> AppResult<(String, Opti
     Ok((api_key, base_url))
 }
 
-fn get_active_provider(state: &AppState) -> AppResult<(String, String, Option<String>, Option<String>)> {
+fn get_active_provider(
+    state: &AppState,
+) -> AppResult<(String, String, Option<String>, Option<String>, GenerationOptions)> {
     let conn = state.db.get()?;
     let row = conn
         .query_row(
-            "SELECT provider, selected_model, base_url FROM ai_providers WHERE active = 1 LIMIT 1",
+            "SELECT provider, selected_model, base_url, options_json FROM ai_providers WHERE active = 1 LIMIT 1",
             [],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?)),
+            |r| Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+            )),
         )
         .map_err(|_| AppError::Validation("Aktif bir AI sağlayıcı yok.".into()))?;
     let api_key = if row.0 == "ollama" {
@@ -206,7 +228,24 @@ fn get_active_provider(state: &AppState) -> AppResult<(String, String, Option<St
     } else {
         secrets::read_ai_key(&row.0)?
     };
-    Ok((row.0, api_key, row.1, row.2))
+    let options: GenerationOptions = row
+        .3
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_else(GenerationOptions::consistent);
+    Ok((row.0, api_key, row.1, row.2, options))
+}
+
+/// Modele göre dinamik max_tokens (Türkçe satıcı cevabı için optimize)
+fn max_tokens_for_model(model: &str) -> u32 {
+    let lower = model.to_lowercase();
+    if lower.contains("3b") || lower.contains("mini") || lower.contains("1b") {
+        800
+    } else if lower.contains("70b") || lower.contains("405b") || lower.contains("72b") {
+        2048
+    } else {
+        1024
+    }
 }
 
 #[tauri::command]
@@ -255,7 +294,7 @@ pub async fn generate_draft_for_question(
     state: Arc<AppState>,
     question_id: i64,
 ) -> AppResult<()> {
-    let (provider, api_key, selected_model, base_url) = get_active_provider(&state)?;
+    let (provider, api_key, selected_model, base_url, options) = get_active_provider(&state)?;
     let model = selected_model.ok_or_else(|| AppError::Validation("Model seçilmemiş".into()))?;
 
     let (q_text, customer_id, product_name) = {
@@ -291,7 +330,7 @@ pub async fn generate_draft_for_question(
         }
     }
 
-    let rag = crate::ai::rag::fetch_similar(&state, &q_text, 5)?;
+    let rag = crate::ai::rag::fetch_similar_hybrid(&state, &q_text, 5).await?;
     let rag_text = crate::ai::rag::format_context(&rag);
     let active_training: Option<String> = {
         let conn = state.db.get()?;
@@ -307,12 +346,14 @@ pub async fn generate_draft_for_question(
         crate::ai::prompt::build_answer_prompt(&q_text, product_name.as_deref(), &history, &rag_text);
 
     let client = build_provider(&provider, base_url, api_key)?;
+    let max_tokens = max_tokens_for_model(&model);
     let text = client
         .generate(GenerationRequest {
             system_prompt: Some(&system_prompt),
             user_prompt: &user_prompt,
             model: &model,
-            max_tokens: Some(1024),
+            max_tokens: Some(max_tokens),
+            options: options.clone(),
         })
         .await?
         .trim()
@@ -333,7 +374,7 @@ pub async fn generate_answer(
     payload: GenerateAnswerPayload,
 ) -> AppResult<String> {
     let state_arc = state.inner().clone();
-    let (provider, api_key, selected_model, base_url) = get_active_provider(&state_arc)?;
+    let (provider, api_key, selected_model, base_url, options) = get_active_provider(&state_arc)?;
     let model = payload
         .model_override
         .or(selected_model)
@@ -372,7 +413,7 @@ pub async fn generate_answer(
         }
     }
 
-    let rag = fetch_similar(&state_arc, &q_text, 5)?;
+    let rag = fetch_similar_hybrid(&state_arc, &q_text, 5).await?;
     let rag_text = format_context(&rag);
 
     let active_training: Option<String> = {
@@ -388,12 +429,14 @@ pub async fn generate_answer(
     let user_prompt = build_answer_prompt(&q_text, product_name.as_deref(), &history, &rag_text);
 
     let client = build_provider(&provider, base_url, api_key)?;
+    let max_tokens = max_tokens_for_model(&model);
     let mut text = client
         .generate(GenerationRequest {
             system_prompt: Some(&system_prompt),
             user_prompt: &user_prompt,
             model: &model,
-            max_tokens: Some(1024),
+            max_tokens: Some(max_tokens),
+            options,
         })
         .await?;
     text = text.trim().to_string();
@@ -441,7 +484,7 @@ pub async fn train_ai(
     )
     .await?;
 
-    let (provider, api_key, selected_model, base_url) = get_active_provider(&state_arc)?;
+    let (provider, api_key, selected_model, base_url, options) = get_active_provider(&state_arc)?;
     let model = selected_model
         .ok_or_else(|| AppError::Validation("Aktif sağlayıcıda model seçilmemiş.".into()))?;
 
@@ -468,6 +511,7 @@ pub async fn train_ai(
             user_prompt: &training_prompt,
             model: &model,
             max_tokens: Some(4096),
+            options,
         })
         .await?;
 
@@ -675,6 +719,198 @@ pub async fn delete_training(
     }
     tx.commit()?;
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReindexResult {
+    pub indexed: i64,
+    pub failed: i64,
+    pub total: i64,
+}
+
+#[tauri::command]
+pub async fn reindex_embeddings(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<ReindexResult> {
+    use tauri::Emitter;
+    let state_arc = state.inner().clone();
+    let candidates: Vec<(i64, String, String)> = {
+        let conn = state_arc.db.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT question_id, text, COALESCE(answer_text, '') FROM questions \
+             WHERE answer_text IS NOT NULL AND answer_text != ''",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        rows.flatten().collect()
+    };
+    let total = candidates.len() as i64;
+    let mut indexed = 0i64;
+    let mut failed = 0i64;
+    for (i, (qid, q_text, a_text)) in candidates.iter().enumerate() {
+        let combined = format!("Soru: {}\nCevap: {}", q_text, a_text);
+        match crate::ai::rag::index_qa_embedding(&state_arc, *qid, &combined).await {
+            Ok(_) => indexed += 1,
+            Err(e) => {
+                log::warn!("Embedding indexlenemedi (Q{}): {}", qid, e);
+                failed += 1;
+            }
+        }
+        if i % 10 == 0 {
+            let _ = app.emit(
+                "ai-reindex:progress",
+                serde_json::json!({
+                    "current": i + 1,
+                    "total": total,
+                    "indexed": indexed,
+                    "failed": failed,
+                }),
+            );
+        }
+    }
+    let _ = app.emit(
+        "ai-reindex:progress",
+        serde_json::json!({
+            "current": total,
+            "total": total,
+            "indexed": indexed,
+            "failed": failed,
+            "done": true,
+        }),
+    );
+    Ok(ReindexResult {
+        indexed,
+        failed,
+        total,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateCustomModelPayload {
+    pub name: String,
+    pub base_model: String,
+    pub training_id: i64,
+}
+
+#[tauri::command]
+pub async fn ollama_create_custom_model(
+    state: State<'_, Arc<AppState>>,
+    payload: CreateCustomModelPayload,
+) -> AppResult<String> {
+    let state_arc = state.inner().clone();
+    let system_prompt: String = {
+        let conn = state_arc.db.get()?;
+        conn.query_row(
+            "SELECT system_prompt FROM ai_training_runs WHERE id = ?1",
+            params![payload.training_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| AppError::Validation("Eğitim bulunamadı.".into()))?
+    };
+    let base_url: String = {
+        let conn = state_arc.db.get()?;
+        conn.query_row(
+            "SELECT COALESCE(base_url, 'http://127.0.0.1:11434') FROM ai_providers WHERE provider = 'ollama'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|_| "http://127.0.0.1:11434".into())
+    };
+
+    let safe_name = payload
+        .name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect::<String>();
+    if safe_name.is_empty() {
+        return Err(AppError::Validation("Model adı boş olamaz.".into()));
+    }
+
+    let escaped_prompt = system_prompt.replace('"', "\\\"");
+    let modelfile = format!(
+        "FROM {}\nSYSTEM \"\"\"{}\"\"\"\nPARAMETER temperature 0.3\nPARAMETER top_p 0.7\nPARAMETER top_k 20\nPARAMETER repeat_penalty 1.15\n",
+        payload.base_model, escaped_prompt
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| AppError::Http(e.to_string()))?;
+    let url = format!("{}/api/create", base_url.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "name": safe_name,
+        "modelfile": modelfile,
+        "stream": false,
+    });
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AppError::Ai(format!("Ollama erişilemedi: {}", e)))?;
+    if !resp.status().is_success() {
+        let s = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(AppError::Ai(format!(
+            "Özel model oluşturma hatası {}: {}",
+            s, body
+        )));
+    }
+    Ok(safe_name)
+}
+
+#[tauri::command]
+pub async fn ai_test_style(
+    state: State<'_, Arc<AppState>>,
+    payload: TestStylePayload,
+) -> AppResult<String> {
+    let state_arc = state.inner().clone();
+    let (provider, api_key, selected_model, base_url, options) = get_active_provider(&state_arc)?;
+    let model = selected_model
+        .ok_or_else(|| AppError::Validation("Model seçilmemiş.".into()))?;
+    let active_training: Option<String> = {
+        let conn = state_arc.db.get()?;
+        conn.query_row(
+            "SELECT system_prompt FROM ai_training_runs WHERE active = 1 ORDER BY id DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+    let system_prompt = crate::ai::prompt::base_system_prompt(active_training.as_deref());
+    let user_prompt = crate::ai::prompt::build_answer_prompt(
+        &payload.question,
+        None,
+        &Vec::new(),
+        "",
+    );
+    let client = build_provider(&provider, base_url, api_key)?;
+    let max_tokens = max_tokens_for_model(&model);
+    client
+        .generate(GenerationRequest {
+            system_prompt: Some(&system_prompt),
+            user_prompt: &user_prompt,
+            model: &model,
+            max_tokens: Some(max_tokens),
+            options,
+        })
+        .await
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestStylePayload {
+    pub question: String,
 }
 
 #[tauri::command]

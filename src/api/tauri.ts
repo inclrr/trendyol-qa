@@ -75,13 +75,23 @@ export interface AnswerTemplate {
 
 export interface AiProviderRow {
   id?: number | null;
-  provider: "gemini" | "openrouter" | string;
+  provider: "gemini" | "openrouter" | "ollama" | string;
   displayName: string;
   selectedModel: string | null;
   baseUrl: string | null;
   active: boolean;
   createdAt: number;
   hasApiKey: boolean;
+  optionsJson: string | null;
+}
+
+export interface AiOptions {
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  repeatPenalty?: number;
+  numCtx?: number;
+  keepAlive?: string;
 }
 
 export interface AiModel {
@@ -196,6 +206,7 @@ export const api = {
     selectedModel?: string | null;
     baseUrl?: string | null;
     apiKey?: string | null;
+    optionsJson?: string | null;
   }) => invoke<AiProviderRow>("upsert_ai_provider", { payload }),
   setActiveProvider: (provider: string) =>
     invoke<void>("set_active_provider", { provider }),
@@ -235,6 +246,21 @@ export const api = {
   getSetting: (key: string) => invoke<string | null>("get_setting", { key }),
   setSetting: (key: string, value: string) =>
     invoke<void>("set_setting", { key, value }),
+
+  reindexEmbeddings: () =>
+    invoke<{ indexed: number; failed: number; total: number }>(
+      "reindex_embeddings"
+    ),
+  ollamaCreateCustomModel: (
+    name: string,
+    baseModel: string,
+    trainingId: number
+  ) =>
+    invoke<string>("ollama_create_custom_model", {
+      payload: { name, baseModel, trainingId },
+    }),
+  aiTestStyle: (question: string) =>
+    invoke<string>("ai_test_style", { payload: { question } }),
 
   backupExport: (destination: string) =>
     invoke<number>("backup_export", { destination }),

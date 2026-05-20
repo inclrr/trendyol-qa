@@ -145,11 +145,22 @@ impl AiProvider for GeminiClient {
             system_instruction: req.system_prompt.map(|s| SystemInstruction {
                 parts: vec![Part { text: s.into() }],
             }),
-            generation_config: req.max_tokens.map(|m| {
-                json!({
-                    "maxOutputTokens": m,
-                    "temperature": 0.4,
-                })
+            generation_config: Some({
+                let mut cfg = serde_json::Map::new();
+                if let Some(m) = req.max_tokens {
+                    cfg.insert("maxOutputTokens".into(), serde_json::json!(m));
+                }
+                cfg.insert(
+                    "temperature".into(),
+                    serde_json::json!(req.options.temperature.unwrap_or(0.3)),
+                );
+                if let Some(top_p) = req.options.top_p {
+                    cfg.insert("topP".into(), serde_json::json!(top_p));
+                }
+                if let Some(top_k) = req.options.top_k {
+                    cfg.insert("topK".into(), serde_json::json!(top_k));
+                }
+                serde_json::Value::Object(cfg)
             }),
         };
         let resp = self

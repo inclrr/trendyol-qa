@@ -19,6 +19,9 @@ jobs:
           - os: macos-latest
             platform: darwin-aarch64
             artifact-name: macos-arm64
+          - os: ubuntu-22.04
+            platform: linux-x86_64
+            artifact-name: linux-x64
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -37,6 +40,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+
+      - name: Linux deps
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            file
 
       - name: Install npm dependencies
         run: npm ci --legacy-peer-deps
@@ -62,6 +77,15 @@ jobs:
           cp src-tauri/target/release/bundle/macos/*.app.tar.gz artefakts/ 2>/dev/null || true
           cp src-tauri/target/release/bundle/macos/*.app.tar.gz.sig artefakts/ 2>/dev/null || true
           cp src-tauri/target/release/bundle/dmg/*.dmg artefakts/ 2>/dev/null || true
+          ls -la artefakts/
+
+      - name: Collect Linux artefakts
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          mkdir -p artefakts
+          cp src-tauri/target/release/bundle/appimage/*.AppImage artefakts/ 2>/dev/null || true
+          cp src-tauri/target/release/bundle/appimage/*.AppImage.sig artefakts/ 2>/dev/null || true
+          cp src-tauri/target/release/bundle/deb/*.deb artefakts/ 2>/dev/null || true
           ls -la artefakts/
 
       - name: Upload artefakts
@@ -125,6 +149,18 @@ jobs:
             $assetName = $macTar.Name -replace ' ', '.'
             $signature = (Get-Content $macSig.FullName -Raw).Trim()
             $platforms['darwin-aarch64'] = [ordered]@{
+              signature = $signature
+              url = "https://github.com/$repo/releases/download/v$version/$assetName"
+            }
+          }
+
+          # Linux x86_64 (AppImage)
+          $linuxImg = Get-ChildItem "dist/build-linux-x64" -Filter "*.AppImage" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $linuxSig = Get-ChildItem "dist/build-linux-x64" -Filter "*.AppImage.sig" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($linuxImg -and $linuxSig) {
+            $assetName = $linuxImg.Name -replace ' ', '.'
+            $signature = (Get-Content $linuxSig.FullName -Raw).Trim()
+            $platforms['linux-x86_64'] = [ordered]@{
               signature = $signature
               url = "https://github.com/$repo/releases/download/v$version/$assetName"
             }

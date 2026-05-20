@@ -4,6 +4,7 @@ import {
   api,
   type ActiveTraining,
   type AiModel,
+  type AiOptions,
   type AiProviderRow,
   type TrainingRecord,
 } from "../api/tauri";
@@ -11,6 +12,9 @@ import { useAppStore } from "../stores/useAppStore";
 import { useAiStore } from "../stores/useAiStore";
 import { Check, RefreshCw, Sparkles, Trash } from "../components/icons";
 import { formatDate } from "../lib/format";
+import ModelWizardModal from "../components/ModelWizardModal";
+import StyleTestModal from "../components/StyleTestModal";
+import CustomModelModal from "../components/CustomModelModal";
 
 interface ProviderForm {
   provider: "gemini" | "openrouter" | "ollama";
@@ -18,7 +22,35 @@ interface ProviderForm {
   apiKey: string;
   baseUrl: string;
   selectedModel: string;
+  options: AiOptions;
 }
+
+const DEFAULT_OPTIONS: AiOptions = {
+  temperature: 0.3,
+  topP: 0.7,
+  topK: 20,
+  repeatPenalty: 1.15,
+  numCtx: 4096,
+  keepAlive: "10m",
+};
+
+const PRESET_CONSISTENT: AiOptions = {
+  temperature: 0.3,
+  topP: 0.7,
+  topK: 20,
+  repeatPenalty: 1.15,
+  numCtx: 4096,
+  keepAlive: "10m",
+};
+
+const PRESET_CREATIVE: AiOptions = {
+  temperature: 0.8,
+  topP: 0.95,
+  topK: 40,
+  repeatPenalty: 1.1,
+  numCtx: 4096,
+  keepAlive: "10m",
+};
 
 const DEFAULTS: ProviderForm[] = [
   {
@@ -27,6 +59,7 @@ const DEFAULTS: ProviderForm[] = [
     apiKey: "",
     baseUrl: "",
     selectedModel: "",
+    options: { ...DEFAULT_OPTIONS },
   },
   {
     provider: "openrouter",
@@ -34,6 +67,7 @@ const DEFAULTS: ProviderForm[] = [
     apiKey: "",
     baseUrl: "https://openrouter.ai/api/v1",
     selectedModel: "",
+    options: { ...DEFAULT_OPTIONS },
   },
   {
     provider: "ollama",
@@ -41,6 +75,7 @@ const DEFAULTS: ProviderForm[] = [
     apiKey: "",
     baseUrl: "http://127.0.0.1:11434",
     selectedModel: "",
+    options: { ...DEFAULT_OPTIONS },
   },
 ];
 
@@ -61,6 +96,9 @@ export default function AISettings() {
   const [models, setModels] = useState<Record<string, AiModel[]>>({});
   const [loadingModels, setLoadingModels] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [styleTestOpen, setStyleTestOpen] = useState(false);
+  const [customModelOpen, setCustomModelOpen] = useState(false);
   const [trainStart, setTrainStart] = useState<string>(
     new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   );
@@ -81,11 +119,18 @@ export default function AISettings() {
       prev.map((f) => {
         const r = rows.find((x) => x.provider === f.provider);
         if (!r) return f;
+        let parsedOptions: AiOptions = f.options;
+        if (r.optionsJson) {
+          try {
+            parsedOptions = { ...DEFAULT_OPTIONS, ...JSON.parse(r.optionsJson) };
+          } catch {}
+        }
         return {
           ...f,
           displayName: r.displayName,
           baseUrl: r.baseUrl ?? f.baseUrl,
           selectedModel: r.selectedModel ?? "",
+          options: parsedOptions,
         };
       })
     );
@@ -139,6 +184,7 @@ export default function AISettings() {
         selectedModel: form.selectedModel || null,
         baseUrl: form.baseUrl || null,
         apiKey: form.apiKey || null,
+        optionsJson: JSON.stringify(form.options),
       });
       // DB'den dönen sonuca güven; refresh state'i override etmesin
       setForms((prev) =>
@@ -208,11 +254,30 @@ export default function AISettings() {
         selectedModel: form.selectedModel || null,
         baseUrl: form.baseUrl || null,
         apiKey: null, // mevcut key korunsun (COALESCE arka tarafta)
+        optionsJson: JSON.stringify(form.options),
       });
       // refresh çağırmıyoruz — kullanıcının seçim state'ini override etmesin
     } catch (e) {
       console.warn("autoSave provider hatası", e);
     }
+  }
+
+  /** Provider options değiştiğinde state + DB güncelle */
+  function updateOptions(provider: string, patch: Partial<AiOptions>) {
+    setForms((prev) => {
+      const next = prev.map((f) =>
+        f.provider === provider
+          ? { ...f, options: { ...f.options, ...patch } }
+          : f
+      );
+      const updated = next.find((f) => f.provider === provider);
+      if (updated) autoSaveProvider(updated);
+      return next;
+    });
+  }
+
+  function applyPreset(provider: string, preset: AiOptions) {
+    updateOptions(provider, preset);
   }
 
   async function deleteProvider(provider: string) {
@@ -265,6 +330,47 @@ export default function AISettings() {
 
   return (
     <div className="space-y-6 p-6">
+      {wizardOpen && (
+        <ModelWizardModal
+          onClose={() => setWizardOpen(false)}
+          onSelect={(modelId) => {
+            const ollamaForm = forms.find((f) => f.provider === "ollama");
+            if (ollamaForm) {
+              const updated = { ...ollamaForm, selectedModel: modelId };
+              setForms((prev) =>
+                prev.map((f) => (f.provider === "ollama" ? updated : f))
+              );
+              autoSaveProvider(updated);
+            }
+          }}
+        />
+      )}
+      {styleTestOpen && (
+        <StyleTestModal
+          onClose={() => setStyleTestOpen(false)}
+          generate={(q) => api.aiTestStyle(q)}
+        />
+      )}
+      {customModelOpen &&
+        (() => {
+          const active = trainings.find((t) => t.active);
+          if (!active) return null;
+          const ollamaModels = models["ollama"] ?? [];
+          return (
+            <CustomModelModal
+              trainingId={active.id}
+              availableModels={ollamaModels.map((m) => ({
+                id: m.id,
+                name: m.name,
+              }))}
+              onClose={() => setCustomModelOpen(false)}
+              onCreated={() => {
+                const ollamaForm = forms.find((f) => f.provider === "ollama");
+                if (ollamaForm) loadModels(ollamaForm);
+              }}
+            />
+          );
+        })()}
       <h2 className="text-xl font-semibold">{t("ai.title")}</h2>
 
       <section className="space-y-3">
@@ -329,6 +435,13 @@ export default function AISettings() {
                     <div className="mt-1 text-muted">
                       {t("ai.ollamaSetupSteps")}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setWizardOpen(true)}
+                      className="btn-secondary mt-2 text-xs"
+                    >
+                      🧙 Model Önerisi Sihirbazı
+                    </button>
                   </div>
                 )}
                 {(form.provider === "openrouter" || form.provider === "ollama") && (
@@ -400,6 +513,157 @@ export default function AISettings() {
                     {t("ai.loadModels")}
                   </button>
                 </div>
+                <details className="rounded-lg border border-border bg-surface/50 p-3">
+                  <summary className="cursor-pointer select-none text-sm font-medium">
+                    ⚙️ {t("ai.advancedSettings")}
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs"
+                        onClick={() =>
+                          applyPreset(form.provider, PRESET_CONSISTENT)
+                        }
+                      >
+                        {t("ai.presetConsistent")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs"
+                        onClick={() =>
+                          applyPreset(form.provider, PRESET_CREATIVE)
+                        }
+                      >
+                        {t("ai.presetCreative")}
+                      </button>
+                    </div>
+                    <div>
+                      <label className="label flex justify-between">
+                        <span>{t("ai.temperature")}</span>
+                        <span className="text-xs text-muted">
+                          {(form.options.temperature ?? 0.3).toFixed(2)}
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={2}
+                        step={0.05}
+                        value={form.options.temperature ?? 0.3}
+                        onChange={(e) =>
+                          updateOptions(form.provider, {
+                            temperature: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="label flex justify-between">
+                        <span>{t("ai.topP")}</span>
+                        <span className="text-xs text-muted">
+                          {(form.options.topP ?? 0.7).toFixed(2)}
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={form.options.topP ?? 0.7}
+                        onChange={(e) =>
+                          updateOptions(form.provider, {
+                            topP: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="label flex justify-between">
+                        <span>{t("ai.topK")}</span>
+                        <span className="text-xs text-muted">
+                          {form.options.topK ?? 20}
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={form.options.topK ?? 20}
+                        onChange={(e) =>
+                          updateOptions(form.provider, {
+                            topK: parseInt(e.target.value, 10),
+                          })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="label flex justify-between">
+                        <span>{t("ai.repeatPenalty")}</span>
+                        <span className="text-xs text-muted">
+                          {(form.options.repeatPenalty ?? 1.15).toFixed(2)}
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min={1}
+                        max={2}
+                        step={0.05}
+                        value={form.options.repeatPenalty ?? 1.15}
+                        onChange={(e) =>
+                          updateOptions(form.provider, {
+                            repeatPenalty: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                    {form.provider === "ollama" && (
+                      <>
+                        <div>
+                          <label className="label">{t("ai.numCtx")}</label>
+                          <select
+                            className="input"
+                            value={form.options.numCtx ?? 4096}
+                            onChange={(e) =>
+                              updateOptions(form.provider, {
+                                numCtx: parseInt(e.target.value, 10),
+                              })
+                            }
+                          >
+                            <option value={2048}>2048</option>
+                            <option value={4096}>4096</option>
+                            <option value={8192}>8192</option>
+                            <option value={16384}>16384</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label">{t("ai.keepAlive")}</label>
+                          <select
+                            className="input"
+                            value={form.options.keepAlive ?? "10m"}
+                            onChange={(e) =>
+                              updateOptions(form.provider, {
+                                keepAlive: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="0">0 (kapat)</option>
+                            <option value="5m">5 dakika</option>
+                            <option value="10m">10 dakika</option>
+                            <option value="30m">30 dakika</option>
+                            <option value="-1">Sınırsız</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+                    <p className="text-xs text-muted">{t("ai.advancedHint")}</p>
+                  </div>
+                </details>
                 <div className="flex items-center justify-between">
                   <div className="flex gap-2">
                     <button
@@ -603,6 +867,32 @@ export default function AISettings() {
         </div>
 
         {trainings.length > 0 && (
+          <>
+          {(() => {
+            const active = trainings.find((tr) => tr.active);
+            if (!active) return null;
+            return (
+              <div className="border-t border-border pt-3 space-y-2">
+                <h4 className="text-sm font-semibold text-muted">
+                  Aktif Eğitim Aksiyonları
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setStyleTestOpen(true)}
+                    className="btn-secondary text-xs"
+                  >
+                    🧪 AI Stilimi Test Et
+                  </button>
+                  <button
+                    onClick={() => setCustomModelOpen(true)}
+                    className="btn-secondary text-xs"
+                  >
+                    🔧 Bu Eğitimden Özel Model Oluştur
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
           <div className="border-t border-border pt-3">
             <h4 className="mb-2 text-sm font-semibold text-muted">
               {t("ai.trainingHistory")}
@@ -646,6 +936,7 @@ export default function AISettings() {
               ))}
             </div>
           </div>
+          </>
         )}
       </section>
     </div>

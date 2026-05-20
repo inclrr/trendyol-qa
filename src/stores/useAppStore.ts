@@ -12,6 +12,12 @@ interface AppState {
   setSelectedStoreIds: (ids: number[] | null) => void;
   pendingCount: number;
   setPendingCount: (n: number) => void;
+  /** Deadline rozetlerinin yeniden hesaplanması için her ~30sn'de güncellenen tick */
+  nowTick: number;
+  setNowTick: (n: number) => void;
+  /** Kullanıcı tarafından ayarlanabilir (default 2 saat) */
+  answerDeadlineHours: number;
+  setAnswerDeadlineHours: (h: number) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -23,6 +29,10 @@ export const useAppStore = create<AppState>((set) => ({
   setSelectedStoreIds: (ids) => set({ selectedStoreIds: ids }),
   pendingCount: 0,
   setPendingCount: (n) => set({ pendingCount: n }),
+  nowTick: Date.now(),
+  setNowTick: (n) => set({ nowTick: n }),
+  answerDeadlineHours: 2,
+  setAnswerDeadlineHours: (h) => set({ answerDeadlineHours: h }),
 }));
 
 export function applyTheme(theme: Theme) {
